@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('.', import.meta.url))
 // tsconfig path aliases used by the sources (kept in sync with tsconfig.json "paths").
 const aliases: Array<[string, string]> = [
 	['@lib/', 'src/lib/'],
+	['@GraphQLInput/', 'src/graphQLPublic/schema/GraphQLInput/'],
 	['@ptypes/', 'src/graphQLPublic/schema/types/']
 ]
 

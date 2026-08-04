@@ -35,6 +35,7 @@
 		/* Base directory to resolve non-absolute module names. */
 		"paths": {
 			"@lib/*": ["./src/lib/*"],
+			"@GraphQLInput/*": ["./src/graphQLPublic/schema/GraphQLInput/*"],
 			"@ptypes/*": ["./src/graphQLPublic/schema/types/*"]
 		},
 		// "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */

@@ -69,8 +69,24 @@ UPLOAD_DIR=/media/xxx
 MAX_IMAGE_MB=20
 MAX_VIDEO_MB=100
 
+# ── Transactional email (SocketLabs, via @axiumine/koa-utils) ─────────────────
+#
+# This is the only service that sends mail: the verify-email flow mounted under /check lives here.
+# The four variables below were missing from this template while the code has always read them —
+# SocketLabsLib and createVerifyEmailFlow resolve all four from the environment at construction
+# time, so a deployment built from this file alone sent mail with `undefined` in the link and in
+# the From header. Key names only; the real values are in .env.
+#
+# APP_DOMAIN     — origin the confirmation link is built on, `${APP_DOMAIN}/check/verify-email/…`.
+# EMAIL_FROM     — envelope sender.
+# PLATFORM_NAME  — product name rendered in the mail body and subject.
+# DEV_TEAM_EMAIL — where delivery failures and flow errors are reported.
 SOCKETLABS_SERVER_ID=111111
 SOCKETLABS_SERVER_APIKEY=xxxxxx
+APP_DOMAIN=https://xxxx.tdweb.lan
+EMAIL_FROM=xxx@xxxx.tdweb.lan
+PLATFORM_NAME=Marketplace
+DEV_TEAM_EMAIL=xxx@xxxx.tdweb.lan
 REDIRECT_DOMAIN=https://xxxx.tdweb.lan
 
 HIT_STATS=false

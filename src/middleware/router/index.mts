@@ -3,7 +3,7 @@ import Router from '@koa/router'
 // package's own `UserBase` model — collection `user`, which no migration on this platform creates —
 // so the lookup found nothing whatever was asked of it and the route redirected every request to
 // `/x/email-check`, correct hash or not. The local module is the same factory pointed at
-// `Imprenditore`; see the paths map there.
+// `ShopOwner`; see the paths map there.
 import { routerVerifyEmail } from '@lib/access/verifyEmailFlow.mjs'
 
 const router = new Router({ prefix: '/check' })

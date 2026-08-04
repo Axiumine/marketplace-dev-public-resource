@@ -1,4 +1,4 @@
-import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Imprenditore'
+import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 // Sentinels: the factory is koa-utils' and is tested there. What this file pins is what WE hand it,
@@ -25,15 +25,15 @@ beforeAll(async () => {
 })
 
 describe('resetPwdFlow', () => {
-	it('builds the flow exactly once, against the Imprenditore model', () => {
+	it('builds the flow exactly once, against the ShopOwner model', () => {
 		expect(createResetPwdFlow).toHaveBeenCalledTimes(1)
-		expect(createResetPwdFlow.mock.calls[0][0].model).toBe(Imprenditore)
+		expect(createResetPwdFlow.mock.calls[0][0].model).toBe(ShopOwner)
 	})
 
-	it('binds the flow to the imprenditore collection, not koa-utils UserBase', () => {
+	it('binds the flow to the shopOwner collection, not koa-utils UserBase', () => {
 		// The whole point of the 5.3.0 factory. UserBase is collection 'user', which this database
 		// does not have: while the flow was welded to it, every reset silently queried nothing.
-		expect(Imprenditore.collection.name).toBe('imprenditore')
+		expect(ShopOwner.collection.name).toBe('shopOwner')
 	})
 
 	// Regression guard against the whole map being wiped to `{}`: a per-key check alone would not
@@ -46,7 +46,7 @@ describe('resetPwdFlow', () => {
 		expect(RESET_PWD_PATHS).toEqual({
 			email: 'login.email',
 			password: 'login.password',
-			name: 'anagrafica.nome',
+			name: 'personalData.firstName',
 			resetDateReq: 'resetPwd.resetDateReq',
 			resetHash: 'resetPwd.resetHash',
 			deleted: 'deleted',
@@ -56,7 +56,7 @@ describe('resetPwdFlow', () => {
 		expect(createResetPwdFlow.mock.calls[0][0].paths).toEqual({
 			email: 'login.email',
 			password: 'login.password',
-			name: 'anagrafica.nome',
+			name: 'personalData.firstName',
 			resetDateReq: 'resetPwd.resetDateReq',
 			resetHash: 'resetPwd.resetHash',
 			deleted: 'deleted',
@@ -67,11 +67,11 @@ describe('resetPwdFlow', () => {
 
 	// Regression guard. koa-utils 5.4.0 answers null for a deleted or disabled account, but it reads
 	// those flags through paths that default to the UserBase layout - account.deleted and
-	// account.disabled, neither of which exists on imprenditore. Dropping the keys is caught by tsc,
+	// account.disabled, neither of which exists on shopOwner. Dropping the keys is caught by tsc,
 	// since RESET_PWD_PATHS is annotated with the full IResetPwdPaths rather than a Partial. Pointing
 	// them at the WRONG path is not caught by anything: the gate reads undefined for every account
 	// and silently never fires again. That is what this guard, and the schema check below, are for.
-	// On imprenditore both flags live at the document root.
+	// On shopOwner both flags live at the document root.
 	it('points the account-state gate at the root flags, not the UserBase account subtree', () => {
 		expect(RESET_PWD_PATHS.deleted).toBe('deleted')
 		expect(RESET_PWD_PATHS.disabled).toBe('disabled')
@@ -107,7 +107,7 @@ describe('resetPwdFlow', () => {
 	// A plain loop, not `it.each`: `it.each`'s table is built while `describe` registers its tests,
 	// which runs synchronously during collection - before `beforeAll` has populated RESET_PWD_PATHS
 	// (see the import note above). Reading it here, inside the test body, runs after the hook.
-	it('resolves every path, including resetClear, on the real Imprenditore schema', () => {
+	it('resolves every path, including resetClear, on the real ShopOwner schema', () => {
 		const table: Array<[string, string]> = [
 			['email', RESET_PWD_PATHS.email],
 			['password', RESET_PWD_PATHS.password],
@@ -120,7 +120,7 @@ describe('resetPwdFlow', () => {
 		]
 
 		for (const [key, dottedPath] of table) {
-			expect(Imprenditore.schema.path(dottedPath), `${key} -> ${dottedPath}`).toBeDefined()
+			expect(ShopOwner.schema.path(dottedPath), `${key} -> ${dottedPath}`).toBeDefined()
 		}
 	})
 

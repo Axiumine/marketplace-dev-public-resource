@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 // The mock target is the LOCAL module, not '@axiumine/koa-utils/koa/router/verifyEmail'. The package
 // export is the same handler pre-bound to koa-utils' own UserBase model — collection 'user', which
 // this platform does not have — so it is no longer what the router mounts; what binds the flow to
-// Imprenditore is pinned in verifyEmailFlow.test.mts.
+// ShopOwner is pinned in verifyEmailFlow.test.mts.
 const verifyEmailHandler = vi.fn()
 const routerVerifyEmail = vi.fn(() => verifyEmailHandler)
 

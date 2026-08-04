@@ -114,7 +114,7 @@ export async function createServer() {
 				json: ['application/json']
 			}
 		})
-	) // serve anche per Apollo
+	) // needed by Apollo too
 
 	/****************
 	 * KOA ENDPOINT
@@ -199,7 +199,7 @@ export async function start() {
 		return { httpServer, apolloServer }
 	} catch (error) {
 		console.error('error', error)
-		Sentry.captureException(error) // @fixme non invia il log verifica !
+		Sentry.captureException(error) // @fixme does not send the log — check!
 		await disconnectAllDatabases(1)
 	}
 }

@@ -1,4 +1,4 @@
-import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Imprenditore'
+import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 // Sentinel: the factory is koa-utils' and is tested there. What this file pins is what WE hand it,
@@ -33,9 +33,9 @@ const EXPECTED = {
 }
 
 describe('verifyEmailFlow', () => {
-	it('builds the flow exactly once, against the Imprenditore model', () => {
+	it('builds the flow exactly once, against the ShopOwner model', () => {
 		expect(createVerifyEmailFlow).toHaveBeenCalledTimes(1)
-		expect(createVerifyEmailFlow.mock.calls[0][0].model).toBe(Imprenditore)
+		expect(createVerifyEmailFlow.mock.calls[0][0].model).toBe(ShopOwner)
 	})
 
 	// The whole argument object, key set included. Two things ride on this. A mutant that drops
@@ -48,8 +48,8 @@ describe('verifyEmailFlow', () => {
 	})
 
 	// Disposal policy. koa-utils 5.6.1 had no such option: both abandon guards hard-deleted, and on
-	// `imprenditore` that dropped the row while its puntoVendita → categoria → 13 food collections went
-	// on pointing at an idImprenditore nothing resolved any more.
+	// `shopOwner` that dropped the row while its puntoVendita → categoria → 13 food collections went
+	// on pointing at an idShopOwner nothing resolved any more.
 	it('soft-deletes an abandoned registration instead of dropping the row', () => {
 		expect(createVerifyEmailFlow.mock.calls[0][0].onAbandon).toBe('soft-delete')
 	})
@@ -58,11 +58,11 @@ describe('verifyEmailFlow', () => {
 	// twice: `deleted` is a Date on the model AND `bsonType: 'date'` in the collection validator, so
 	// the default is rejected by both. The schema assertion is what makes that concrete rather than a
 	// claim in a comment.
-	it('tombstones with a fresh Date, which is what the imprenditore schema declares', () => {
+	it('tombstones with a fresh Date, which is what the shopOwner schema declares', () => {
 		const { deletedValue } = createVerifyEmailFlow.mock.calls[0][0]
 
 		expect(typeof deletedValue).toBe('function')
-		expect(Imprenditore.schema.path('deleted').instance).toBe('Date')
+		expect(ShopOwner.schema.path('deleted').instance).toBe('Date')
 
 		// Called per disposal, not captured once: the function form is the only reason the tombstone
 		// carries the moment of the write rather than the moment this module was first imported.
@@ -78,8 +78,8 @@ describe('verifyEmailFlow', () => {
 	// The route existed for years and never once reached a real account: koa-utils' own export is
 	// bound to UserBase, collection 'user', which this database does not have. Every request found
 	// nothing and redirected to the failure page, including requests carrying a valid hash.
-	it('binds the flow to the imprenditore collection, not koa-utils UserBase', () => {
-		expect(Imprenditore.collection.name).toBe('imprenditore')
+	it('binds the flow to the shopOwner collection, not koa-utils UserBase', () => {
+		expect(ShopOwner.collection.name).toBe('shopOwner')
 	})
 
 	// Whole-object assertion plus an explicit key count, for the same reason as the reset map: a
@@ -138,7 +138,7 @@ describe('verifyEmailFlow', () => {
 	//
 	// A plain loop, not `it.each`: it.each's table is built while describe registers its tests, which
 	// runs during collection — before beforeAll has populated VERIFY_EMAIL_PATHS.
-	it('resolves every path, including both clear lists, on the real Imprenditore schema', () => {
+	it('resolves every path, including both clear lists, on the real ShopOwner schema', () => {
 		const table: Array<[string, string]> = [
 			['email', VERIFY_EMAIL_PATHS.email],
 			['valid', VERIFY_EMAIL_PATHS.valid],
@@ -153,7 +153,7 @@ describe('verifyEmailFlow', () => {
 		]
 
 		for (const [key, dottedPath] of table) {
-			expect(Imprenditore.schema.path(dottedPath), `${key} -> ${dottedPath}`).toBeDefined()
+			expect(ShopOwner.schema.path(dottedPath), `${key} -> ${dottedPath}`).toBeDefined()
 		}
 	})
 

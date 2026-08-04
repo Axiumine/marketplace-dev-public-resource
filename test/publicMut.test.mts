@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // use GraphQLNonNull ... from another module or realm") the instant a schema mixing both is
 // constructed. Stub the bound flow, rebuilt from THIS file's `graphql` import, so the rest of
 // MutationsPublic - all authored locally - is exercised for real. The field shapes below mirror
-// koa-utils'; what actually binds them to `imprenditore` is pinned in resetPwdFlow.test.mts.
+// koa-utils'; what actually binds them to `shopOwner` is pinned in resetPwdFlow.test.mts.
 vi.mock('../src/lib/access/resetPwdFlow.mts', () => ({
 	resetPwd: {
 		description: 'send reset password link',

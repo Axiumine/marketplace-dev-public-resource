@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { createVerifyEmailFlow } from '@axiumine/koa-utils/lib/access/createVerifyEmailFlow'
 import type { IVerifyEmailMailer } from '@axiumine/koa-utils/lib/access/verifyEmailMailer'
-import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Imprenditore'
+import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
 import * as dotenv from 'dotenv'
 import type { Server } from 'http'
 import mongoose from 'mongoose'
@@ -46,7 +46,7 @@ async function gql(query: string, variables?: Record<string, unknown>) {
  * at a shared one. `_id`s are tracked at creation time and drained in afterAll.
  ****************************************************************************************/
 
-const seededImprenditoreIds: mongoose.Types.ObjectId[] = []
+const seededShopOwnerIds: mongoose.Types.ObjectId[] = []
 
 /** The raw driver handle — only defined once start() has connected. */
 function db() {
@@ -67,42 +67,42 @@ const FAKE_PASSWORD_HASH = '$2b$14$' + 'x'.repeat(53)
  * Inserted with the raw driver rather than the Mongoose model, the platform seeding convention:
  * the insert is then shaped by the collection's own `$jsonSchema` and by nothing else, so a seed
  * cannot inherit whatever the model happens to believe today. That is not hypothetical — the model
- * used to spell `anagrafica.nascita.data` as `date` and carry no `contatti` path at all, both of
+ * used to spell `personalData.birth.date` as `date` and carry no `contacts` path at all, both of
  * which the validator refuses under `additionalProperties: false`, so a model write failed outright
  * (fixed in marketplace-common 1.17.0). The raw path was never affected, and will not be by the next
  * drift either.
  *
  * `login` merges into the `login` sub-document; `extra` merges at the document root, which is
  * where the validator puts `disabled`, `deleted`, `resetPwd` and `emailVerify` (see marketplace-db-setup's
- * create-imprenditore migration and the later alter-imprenditore-emailVerify one) — a gate, a
+ * create-shopOwner migration and the later alter-shopOwner-emailVerify one) — a gate, a
  * pre-seeded reset request or a pending verification link all need this second bucket.
  */
-async function seedImprenditore(login: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
+async function seedShopOwner(login: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
 	const email = itestEmail()
 	const _id = new mongoose.Types.ObjectId()
 
 	await db()
-		.collection('imprenditore')
+		.collection('shopOwner')
 		.insertOne({
 			_id,
 			login: { email, password: FAKE_PASSWORD_HASH, ...login },
-			anagrafica: {
-				nome: 'Itest',
-				cognome: 'PublicResource',
-				nascita: { data: new Date('1985-06-15T00:00:00Z') },
-				indirizzo: { indirizzo: 'Via Test 2', cap: '24031', comune: 'Almenno San Salvatore', provincia: 'BG' },
-				contatti: { cellulare: '3900000001', email }
+			personalData: {
+				firstName: 'Itest',
+				lastName: 'PublicResource',
+				birth: { date: new Date('1985-06-15T00:00:00Z') },
+				address: { street: 'Via Test 2', postalCode: '24031', city: 'Almenno San Salvatore', province: 'BG' },
+				contacts: { mobile: '3900000001', email }
 			},
-			iscrizione: new Date(),
+			registeredAt: new Date(),
 			...extra
 		})
-	seededImprenditoreIds.push(_id)
+	seededShopOwnerIds.push(_id)
 
 	return { _id, email }
 }
 
-function imprenditoreById(_id: mongoose.Types.ObjectId) {
-	return db().collection('imprenditore').findOne({ _id })
+function shopOwnerById(_id: mongoose.Types.ObjectId) {
+	return db().collection('shopOwner').findOne({ _id })
 }
 
 beforeAll(async () => {
@@ -134,8 +134,8 @@ afterAll(async () => {
 	// index that would matter for a multi-key operation (CROSSSLOT) is a Redis concern; this loop
 	// only ever touches MongoDB, but it keeps the same "one at a time" shape as the Redis cleanups
 	// elsewhere in the platform for consistency.
-	for (const _id of seededImprenditoreIds) {
-		await drainSafely(`imprenditore ${_id.toString()}`, () => db().collection('imprenditore').deleteOne({ _id }))
+	for (const _id of seededShopOwnerIds) {
+		await drainSafely(`shopOwner ${_id.toString()}`, () => db().collection('shopOwner').deleteOne({ _id }))
 	}
 	await new Promise<void>((resolve) => httpServer.close(() => resolve()))
 	await redisClient.close()
@@ -213,7 +213,7 @@ describe('GraphQL over HTTP', () => {
 // withTransaction, which need the replica set. An address that does not exist is used on purpose:
 // resetPwd answers true without persisting or mailing anything (no enumeration oracle), and
 // updatePwd answers 403 for the same reason. Neither writes.
-describe('reset-password flow bound to the imprenditore collection', () => {
+describe('reset-password flow bound to the shopOwner collection', () => {
 	const unknownEmail = `itest-${randomUUID()}@marketplace.invalid`
 
 	it('resetPwd answers true for an unknown address, without sending anything', async () => {
@@ -240,7 +240,7 @@ describe('reset-password flow bound to the imprenditore collection', () => {
 
 // The describe above only ever reaches the "email not found" branch of resetPwd/updatePwd — the
 // one pair of branches that never touches a real document. Everything below seeds a real
-// imprenditore through the raw driver and reads it back, to prove the OTHER branches for real:
+// shopOwner through the raw driver and reads it back, to prove the OTHER branches for real:
 // the account-state gate (deleted/disabled), the 10-minute resend throttle, and updatePwd's
 // hash/expiry checks.
 //
@@ -253,7 +253,7 @@ describe('reset-password flow bound to the imprenditore collection', () => {
 // of side effect than a write to this service's own throwaway database, so it is listed under
 // "uncovered" in the report rather than exercised here without a decision from whoever owns that
 // account.
-describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branches)', () => {
+describe('resetPwd / updatePwd against a real seeded shopOwner (refusal branches)', () => {
 	const resetPwdMutation = 'mutation ($email: String!) { resetPwd(email: $email) }'
 	const updatePwdMutation = 'mutation ($e: String!, $h: String!, $p: String!) { updatePwd(email: $e, hash: $h, password: $p) }'
 
@@ -268,14 +268,14 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 		expect(json.errors).toBeDefined()
 		expect(json.data?.updatePwd ?? null).toBeNull()
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.login.password).toBe(FAKE_PASSWORD_HASH)
 
 		return doc
 	}
 
 	it('resetPwd leaves a disabled account untouched: true is returned, no resetPwd sub-document is written', async () => {
-		const { _id, email } = await seedImprenditore({}, { disabled: true })
+		const { _id, email } = await seedShopOwner({}, { disabled: true })
 
 		const { json } = await gql(resetPwdMutation, { email })
 		expect(json.errors).toBeUndefined()
@@ -283,18 +283,18 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 
 		// getResetPwd (see koa-utils getResetPwd.mjs) answers null for a disabled account, exactly
 		// as it does for an unknown one — so resetPwd returns before saveResetReq is ever called.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.resetPwd).toBeUndefined()
 	})
 
 	it('resetPwd leaves a deleted account untouched: true is returned, no resetPwd sub-document is written', async () => {
-		const { _id, email } = await seedImprenditore({}, { deleted: new Date() })
+		const { _id, email } = await seedShopOwner({}, { deleted: new Date() })
 
 		const { json } = await gql(resetPwdMutation, { email })
 		expect(json.errors).toBeUndefined()
 		expect(json.data).toEqual({ resetPwd: true })
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.resetPwd).toBeUndefined()
 	})
 
@@ -303,7 +303,7 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 	// "too soon, don't regenerate" branch instead of the "first request" one.
 	it('resetPwd throttles a resend requested less than 10 minutes after the last one: the stored hash is left exactly as seeded', async () => {
 		const seededHash = 'a'.repeat(50)
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ resetPwd: { resetDateReq: new Date(Date.now() - 2 * 60 * 1000), resetHash: seededHash } }
 		)
@@ -312,13 +312,13 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 		expect(json.errors).toBeUndefined()
 		expect(json.data).toEqual({ resetPwd: true })
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.resetPwd.resetHash).toBe(seededHash)
 	})
 
 	it('updatePwd refuses a wrong hash: 403, and neither the password nor the pending request are touched', async () => {
 		const seededHash = 'b'.repeat(50)
-		const { _id, email } = await seedImprenditore({}, { resetPwd: { resetDateReq: new Date(), resetHash: seededHash } })
+		const { _id, email } = await seedShopOwner({}, { resetPwd: { resetDateReq: new Date(), resetHash: seededHash } })
 
 		const doc = await expectUpdatePwdRefused(_id, email, 'c'.repeat(50))
 		expect(doc?.resetPwd.resetHash).toBe(seededHash)
@@ -326,7 +326,7 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 
 	it('updatePwd refuses a link older than 60 minutes even with the correct hash: 403, nothing is touched', async () => {
 		const seededHash = 'd'.repeat(50)
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ resetPwd: { resetDateReq: new Date(Date.now() - 61 * 60 * 1000), resetHash: seededHash } }
 		)
@@ -340,7 +340,7 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 	// on purpose (see applyPasswordReset's own comment): a different status here would let
 	// updatePwd enumerate registered accounts by which email holds a pending reset.
 	it('updatePwd refuses an account with no pending reset request at all: the same 403 as an unknown address', async () => {
-		const { email } = await seedImprenditore()
+		const { email } = await seedShopOwner()
 
 		const { json } = await gql(updatePwdMutation, { e: email, h: 'e'.repeat(50), p: 'Str0ngPwd!2026' })
 		expect(json.errors).toBeDefined()
@@ -349,7 +349,7 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
 
 	it('updatePwd refuses a disabled account even with a correct, unexpired hash: password is left exactly as seeded', async () => {
 		const seededHash = 'f'.repeat(50)
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ disabled: true, resetPwd: { resetDateReq: new Date(), resetHash: seededHash } }
 		)
@@ -369,7 +369,7 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
  *
  * It is now built by `createVerifyEmailFlow` in src/lib/access/verifyEmailFlow.mts, the same shape
  * resetPwdFlow.mts uses, against the `emailVerify` sub-document added to the collection by
- * marketplace-db-setup's 20260726000000-alter-imprenditore-emailVerify migration.
+ * marketplace-db-setup's 20260726000000-alter-shopOwner-emailVerify migration.
  *
  * Every test here drives the MOUNTED route, so it runs the production flow — SocketLabs mailer and
  * all. That limits it to the two branches that send nothing: `userData4VerifyEmail`'s not-found path,
@@ -381,27 +381,27 @@ describe('resetPwd / updatePwd against a real seeded imprenditore (refusal branc
  * ⚠️ All three redirect to the SAME page, and that is a fix rather than a loss of resolution. Through
  * koa-utils 5.6.1 `handleBadDB` threw '/x/error' while an unknown address threw EMAIL_CHECK_LINK, and
  * the pair answered an unauthenticated GET with two distinguishable responses — on data predating the
- * verification fields, where every real imprenditore hit handleBadDB and every unknown address did
+ * verification fields, where every real shopOwner hit handleBadDB and every unknown address did
  * not, that was a clean account-existence oracle. 5.7.0 sends both to EMAIL_CHECK_LINK and keeps the
- * distinction in Sentry. The proof that the lookup lands on `imprenditore` therefore moved off the
+ * distinction in Sentry. The proof that the lookup lands on `shopOwner` therefore moved off the
  * redirect and onto the database: the seeded document is read back below, and the chain describe that
  * follows writes to it.
  */
-describe('GET /check/verify-email/:email/:hash bound to the imprenditore collection', () => {
-	it('redirects to the email-check page for an address that belongs to no imprenditore', async () => {
+describe('GET /check/verify-email/:email/:hash bound to the shopOwner collection', () => {
+	it('redirects to the email-check page for an address that belongs to no shopOwner', async () => {
 		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(itestEmail())}/${'x'.repeat(50)}`)
 
 		expect(res.redirected).toBe(true)
 		expect(res.url).toBe(`${base}/x/email-check`)
 	})
 
-	it('reaches a real imprenditore, stops at handleBadDB, and writes nothing', async () => {
-		// No `emailVerify` at all: the imprenditore exists but has never been sent a verification link.
+	it('reaches a real shopOwner, stops at handleBadDB, and writes nothing', async () => {
+		// No `emailVerify` at all: the shopOwner exists but has never been sent a verification link.
 		// userData4VerifyEmail projects hash/valid/dateLastReq/requestTimes/deleted/disabled, .lean()
 		// returns undefined for the absent ones, and handleBadDB reads a missing requestTimes as
 		// corrupt state rather than "never requested" — so it throws before any guard that would
 		// construct a SocketLabsLib runs.
-		const { _id, email } = await seedImprenditore()
+		const { _id, email } = await seedShopOwner()
 
 		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(email)}/${'x'.repeat(50)}`)
 
@@ -409,7 +409,7 @@ describe('GET /check/verify-email/:email/:hash bound to the imprenditore collect
 		expect(res.url).toBe(`${base}/x/email-check`)
 
 		// enableEmailAccess was never reached: nothing was written to the seeded document.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.login.email).toBe(email)
 		expect(doc?.emailVerify).toBeUndefined()
 	})
@@ -420,7 +420,7 @@ describe('GET /check/verify-email/:email/:hash bound to the imprenditore collect
 	// otherwise increment `undefined`. This is a real emailVerify sub-document being read back through
 	// the paths map, so it also pins that VERIFY_EMAIL_PATHS resolves against the live validator.
 	it('stops at handleBadDB for an emailVerify holding a hash but no requestTimes', async () => {
-		const { _id, email } = await seedImprenditore({}, { emailVerify: { hash: 'x'.repeat(50), dateLastReq: new Date() } })
+		const { _id, email } = await seedShopOwner({}, { emailVerify: { hash: 'x'.repeat(50), dateLastReq: new Date() } })
 
 		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(email)}/${'x'.repeat(50)}`)
 
@@ -428,7 +428,7 @@ describe('GET /check/verify-email/:email/:hash bound to the imprenditore collect
 		expect(res.url).toBe(`${base}/x/email-check`)
 
 		// The stored hash is untouched and `valid` was never set — the guard fired before the write.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify.hash).toBe('x'.repeat(50))
 		expect(doc?.emailVerify.valid).toBeUndefined()
 	})
@@ -463,7 +463,7 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 	}
 
 	const flow = createVerifyEmailFlow({
-		model: Imprenditore,
+		model: ShopOwner,
 		paths: VERIFY_EMAIL_PATHS,
 		onAbandon: 'soft-delete',
 		deletedValue: () => new Date(),
@@ -487,7 +487,7 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 	const VALID_HASH = 'a'.repeat(50)
 
 	it('honours a correct link: sets valid, clears the three token members, sends the welcome', async () => {
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
 		)
@@ -496,20 +496,20 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 
 		// `valid` survives and the three token members are gone — which is the whole reason
 		// VERIFY_EMAIL_PATHS.verifyClear lists leaves rather than the `emailVerify` container.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify).toEqual({ valid: true })
 		expect(sent).toContainEqual(['sendWelcome', email])
 	})
 
 	it('counts a wrong hash as a strike and leaves the account otherwise untouched', async () => {
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
 		)
 
 		expect(await callRoute(email, 'b'.repeat(50))).toBe('/x/email-check')
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify.requestTimes).toBe(2)
 		expect(doc?.emailVerify.valid).toBeUndefined()
 		expect(doc?.deleted).toBeUndefined()
@@ -517,19 +517,19 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 	})
 
 	// The reason the koa-utils change was asked for. Through 5.6.1 this branch was a hard `deleteOne`,
-	// and on `imprenditore` that removed the row while its puntoVendita → categoria → 13 food
-	// collections kept pointing at an idImprenditore that no longer resolved. The row surviving with a
+	// and on `shopOwner` that removed the row while its puntoVendita → categoria → 13 food
+	// collections kept pointing at an idShopOwner that no longer resolved. The row surviving with a
 	// tombstone is the assertion; that the tombstone is a Date the strict validator accepts is the
 	// other half, and it is why `deletedValue` cannot be koa-utils' boolean default.
 	it('soft-deletes on the fifth strike: the row survives, tombstoned with a Date', async () => {
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 5 } }
 		)
 
 		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc).not.toBeNull()
 		expect(doc?.deleted).toBeInstanceOf(Date)
 		expect(doc?.emailVerify.hash).toBe(VALID_HASH)
@@ -538,42 +538,42 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 
 	it('soft-deletes a link older than three days, correct hash and all', async () => {
 		const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ emailVerify: { hash: VALID_HASH, dateLastReq: fourDaysAgo, requestTimes: 1 } }
 		)
 
 		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
 
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc).not.toBeNull()
 		expect(doc?.deleted).toBeInstanceOf(Date)
 		expect(sent).toContainEqual(['hashReqTooOld', email])
 	})
 
 	it('refuses a second use of an already-honoured link without touching the document', async () => {
-		const { _id, email } = await seedImprenditore({}, { emailVerify: { valid: true } })
+		const { _id, email } = await seedShopOwner({}, { emailVerify: { valid: true } })
 
 		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
 
 		// handleIfEmailAlreadyValid is the first guard, so nothing further ran: no strike, no tombstone.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify).toEqual({ valid: true })
 		expect(doc?.deleted).toBeUndefined()
 		expect(sent).toContainEqual(['emailAlreadyValid', email])
 	})
 
 	it('refuses a disabled account after the hash has already checked out', async () => {
-		const { _id, email } = await seedImprenditore(
+		const { _id, email } = await seedShopOwner(
 			{},
 			{ disabled: true, emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
 		)
 
 		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
 
-		// The account-state gate runs last, so a disabled imprenditore gets this far with a correct
+		// The account-state gate runs last, so a disabled shopOwner gets this far with a correct
 		// hash and is still refused — and `valid` was never flipped.
-		const doc = await imprenditoreById(_id)
+		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify.valid).toBeUndefined()
 		expect(sent).toContainEqual(['accountDisabled', email])
 	})

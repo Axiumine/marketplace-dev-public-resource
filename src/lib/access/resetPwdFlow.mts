@@ -1,9 +1,9 @@
 import type { IResetPwdPaths } from '@axiumine/koa-utils/lib/access/accessPaths'
 import { createResetPwdFlow } from '@axiumine/koa-utils/lib/access/createResetPwdFlow'
-import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Imprenditore'
+import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
 
 /**
- * Where the password-reset flow finds its fields on `imprenditore`.
+ * Where the password-reset flow finds its fields on `shopOwner`.
  *
  * koa-utils used to hard-code its own `UserBase` layout (collection `user`, `account.resetDateReq`,
  * `account.resetHash`). Marketplace has no `user` collection, so the flow was inert: every reset request
@@ -14,7 +14,7 @@ import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/Mon
  * to the `UserBase` default, and a path that does not exist on this schema is a runtime no-op, not a
  * type error. `deleted` and `disabled` are the sharp case — koa-utils defaults them to
  * `account.deleted` / `account.disabled`, neither of which exists here, so leaving them out would
- * leave the 5.4.0 account-state gate reading `undefined` forever and never firing. On `imprenditore`
+ * leave the 5.4.0 account-state gate reading `undefined` forever and never firing. On `shopOwner`
  * both flags sit at the document root.
  *
  * `resetClear` is deliberately NOT the pair of leaf paths above it. The migration declares
@@ -25,7 +25,7 @@ import { Imprenditore } from '@thedoctorweb_agency/marketplace-common/models/Mon
 export const RESET_PWD_PATHS: IResetPwdPaths = {
 	email: 'login.email',
 	password: 'login.password',
-	name: 'anagrafica.nome',
+	name: 'personalData.firstName',
 	resetDateReq: 'resetPwd.resetDateReq',
 	resetHash: 'resetPwd.resetHash',
 	deleted: 'deleted',
@@ -44,9 +44,9 @@ export const RESET_PWD_PATHS: IResetPwdPaths = {
  * reads it, and only the admin area writes and displays it — so the reset flow ignoring it changes
  * nothing. If the manual-approval gate is meant to bite, it has to bite at login first.
  */
-const flow = createResetPwdFlow({ model: Imprenditore, paths: RESET_PWD_PATHS })
+const flow = createResetPwdFlow({ model: ShopOwner, paths: RESET_PWD_PATHS })
 
-/** Richiesta di reset: invia il link via email. Field name kept as-is, the clients already call it. */
+/** Reset request: sends the link by email. Field name kept as-is, the clients already call it. */
 export const resetPwd = flow.resetPwd
 
 /**

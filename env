@@ -69,13 +69,50 @@ UPLOAD_DIR=/media/xxx
 MAX_IMAGE_MB=20
 MAX_VIDEO_MB=100
 
+# ── Transactional email (SocketLabs, via @axiumine/koa-utils) ─────────────────
+#
+# This is the only service that sends mail: the verify-email flow mounted under /check lives here.
+# The four variables below were missing from this template while the code has always read them —
+# SocketLabsLib and createVerifyEmailFlow resolve all four from the environment at construction
+# time, so a deployment built from this file alone sent mail with `undefined` in the link and in
+# the From header. Key names only; the real values are in .env.
+#
+# APP_DOMAIN     — origin the confirmation link is built on, `${APP_DOMAIN}/check/verify-email/…`.
+# EMAIL_FROM     — envelope sender.
+# PLATFORM_NAME  — product name rendered in the mail body and subject.
+# DEV_TEAM_EMAIL — where delivery failures and flow errors are reported.
+#
+# APP_DOMAIN_USER — origin the CUSTOMER's confirmation link is built on,
+#   `${APP_DOMAIN_USER}/check/verify-email-user/…`. This one process serves two audiences, and their
+#   links live on two domains: APP_DOMAIN is the operator/shop-owner side, this is the storefront.
+#   Left unset the customer link falls back to APP_DOMAIN — a working link on the wrong domain, which
+#   is the failure mode to prefer over a broken one. Needs koa-utils ≥ 5.8.0, which added the
+#   per-call linkBase/linkPath arguments; before it, one process could only ever send one domain.
 SOCKETLABS_SERVER_ID=111111
 SOCKETLABS_SERVER_APIKEY=xxxxxx
+APP_DOMAIN=https://xxxx.tdweb.lan
+APP_DOMAIN_USER=https://customer.xxxx.tdweb.lan
+EMAIL_FROM=xxx@xxxx.tdweb.lan
+PLATFORM_NAME=Marketplace
+DEV_TEAM_EMAIL=xxx@xxxx.tdweb.lan
 REDIRECT_DOMAIN=https://xxxx.tdweb.lan
 
 HIT_STATS=false
 INTROSPECTION_CODE='xxx'
 
+# ── Cloudflare Turnstile ──────────────────────────────────────────────────────
+# Secret key of the Turnstile widget the customer registration form renders. The site key is public
+# and belongs to the frontend; this one never leaves the server.
+#
+# ⚠️ Deliberately NOT in REQUIRED_ENV_VARS. Those abort the process at boot, and the integration
+# suite has no widget and no secret — a service that cannot start without one cannot test itself.
+# assertTurnstile instead fails closed when NODE_ENV=production and the secret is missing, and
+# bypasses in every other environment. A production deployment that forgets this line refuses every
+# registration; a development one registers freely. Both are the intended reading of "no secret".
+TURNSTILE_SECRET=
+
+# Optional: an empty or missing DSN leaves the Sentry SDK inert and the service still boots.
+# Deliberately absent from REQUIRED_ENV_VARS in src/index.mts — do not add it back.
 DSN="https://xxxxxxxxxxxxxx@bugsink.lan/1"
 
 

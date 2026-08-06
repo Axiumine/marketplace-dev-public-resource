@@ -5,14 +5,31 @@ import { GraphQLObjectType } from 'graphql'
 
 import { publicMutArgs } from './mutations/publicMutArgs.mjs'
 import { publicMutNoArgs } from './mutations/publicMutNoArgs.mjs'
+import { userRegister } from './mutations/userRegister.mjs'
+import { userResetPwd } from './mutations/userResetPwd.mjs'
+import { userUpdatePwd } from './mutations/userUpdatePwd.mjs'
+import { userVerifyEmailResend } from './mutations/userVerifyEmailResend.mjs'
 
 const MutationsPublic = new GraphQLObjectType({
 	name: 'MutationsPublic',
 	fields: {
 		publicMutArgs,
 		publicMutNoArgs,
+		// ⚠️ The ShopOwner pair. `resetPwd` mails a link on `APP_DOMAIN`; the customer pair below mails one
+		// on `APP_DOMAIN_USER`. Two fields rather than one flow choosing at runtime because it cannot:
+		// `user` and `shopOwner` are two collections, and an email plus a hash says nothing about which.
 		resetPwd,
-		updatePwd
+		updatePwd,
+		// ⚠️ Only the customer mutations are behind the Turnstile + rate-limit guard. `resetPwd` and
+		// `updatePwd` above are not, and neither are `login` / `loginAdmin` on 4028 — both shipped
+		// frontends call them today and send no token, so gating them would break the operator and
+		// shop-owner apps on deploy. Adding the gate there is a coordinated change: the frontend has to
+		// mint a token first. The customer tier has no such constraint because its frontend does not
+		// exist yet, so it is born with the gate on.
+		userRegister,
+		userResetPwd,
+		userUpdatePwd,
+		userVerifyEmailResend
 	}
 })
 

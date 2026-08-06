@@ -87,9 +87,23 @@ describe('queries.publicHelloArgs', () => {
 })
 
 describe('QueriesPublic', () => {
-	it('mounts publicHelloNoArgs and publicHelloArgs as its only fields', () => {
+	// The full field list, in declaration order, and asserted exhaustively on purpose: this service has
+	// no auth middleware, so every name below is reachable unauthenticated by anyone on the internet.
+	// A `toContain` here would let a field be added to the public surface without a test changing.
+	it('mounts the demo pair and the eight public reads as its only fields', () => {
 		expect(QueriesPublic.name).toBe('QueriesPublic')
-		expect(Object.keys(QueriesPublic.getFields())).toEqual(['publicHelloNoArgs', 'publicHelloArgs'])
+		expect(Object.keys(QueriesPublic.getFields())).toEqual([
+			'publicHelloNoArgs',
+			'publicHelloArgs',
+			'companies',
+			'companyBySlug',
+			'companiesNearby',
+			'items',
+			'itemBySlug',
+			'itemCategories',
+			'search',
+			'sitemapEntries'
+		])
 	})
 
 	it('runs the no-args query end-to-end', async () => {

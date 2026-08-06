@@ -91,9 +91,16 @@ describe('mutations.publicMutArgs', () => {
 })
 
 describe('MutationsPublic', () => {
-	it('mounts publicMutArgs, publicMutNoArgs, resetPwd and updatePwd as its fields', () => {
+	it('mounts the demo pair, the reset flow and the two customer mutations as its fields', () => {
 		expect(MutationsPublic.name).toBe('MutationsPublic')
-		expect(Object.keys(MutationsPublic.getFields())).toEqual(['publicMutArgs', 'publicMutNoArgs', 'resetPwd', 'updatePwd'])
+		expect(Object.keys(MutationsPublic.getFields())).toEqual([
+			'publicMutArgs',
+			'publicMutNoArgs',
+			'resetPwd',
+			'updatePwd',
+			'userRegister',
+			'userVerifyEmailResend'
+		])
 	})
 
 	it('runs the no-args mutation end-to-end', async () => {

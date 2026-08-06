@@ -99,6 +99,8 @@ describe('MutationsPublic', () => {
 			'resetPwd',
 			'updatePwd',
 			'userRegister',
+			'userResetPwd',
+			'userUpdatePwd',
 			'userVerifyEmailResend'
 		])
 	})

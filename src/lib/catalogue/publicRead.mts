@@ -83,12 +83,17 @@ export const COUNT_CAP = 5_000
  * the caller wanted, in the right order, starting at the right place — the answer is a prefix of the
  * requested one and nothing about it is misleading. An over-large `offset` returns a *different*
  * window, which is why the two are handled differently.
+ *
+ * ⚠️ **Written as `min(max(…))` and not as two boundary comparisons, on purpose.** `if (limit < 1)
+ * return 1` and `limit > MAX_LIMIT ? MAX_LIMIT : limit` are correct, but their `<=` / `>=` variants
+ * return *the same number* at the boundary — an equivalent mutant, which no test can kill and which
+ * therefore reads as a permanent hole in a gate that breaks at 100. The clamp form has no boundary
+ * comparison to flip, and its own mutants (`min` ↔ `max`) are both killed by the tests below.
  */
 export function clampLimit(limit?: number | null): number {
 	if (limit === undefined || limit === null) return DEFAULT_LIMIT
-	if (limit < 1) return 1
 
-	return limit > MAX_LIMIT ? MAX_LIMIT : limit
+	return Math.min(Math.max(limit, 1), MAX_LIMIT)
 }
 
 /**
@@ -99,17 +104,27 @@ export function clampLimit(limit?: number | null): number {
  *
  * `max` is a parameter because the cross-shop paths are much more expensive per skipped row —
  * `MAX_CROSS_SHOP_OFFSET` in `liveItemsAcrossShops.mts` explains why, and passes itself in.
+ *
+ * ⚠️ **`?? 0` and not `offset === undefined || offset === null`, on purpose** — and this is where it
+ * differs from `clampLimit`, which keeps the explicit pair. Dropping the `=== null` arm there answers
+ * `1` instead of `DEFAULT_LIMIT`, so it is observable; dropping it here changes nothing at all,
+ * because the fallthrough runs `Math.max(null, 0)`, which is `0` — the same answer by another route.
+ * That is an equivalent mutant, unkillable by any test, and a permanent hole in a gate that breaks at
+ * 100. `??` collapses both nullish cases in one operator whose own mutant (`??` → `&&`) turns an
+ * omitted offset into `NaN` and is killed by the tests below.
  */
 export function assertOffset(offset?: number | null, max: number = MAX_OFFSET): number {
-	if (offset === undefined || offset === null || offset < 0) return 0
+	const requested = offset ?? 0
 
-	if (offset > max) {
+	if (requested > max) {
 		throw new Error(
 			`offset must not exceed ${max}. Narrow the listing with a city or a category filter, or use sitemapEntries, which is keyset paginated and has no such limit.`
 		)
 	}
 
-	return offset
+	// Same reason as `clampLimit`: `offset < 0 ? 0 : offset` and `offset <= 0 ? 0 : offset` both
+	// answer 0 at zero, so the comparison form carries an unkillable mutant. `Math.max` has none.
+	return Math.max(requested, 0)
 }
 
 /**

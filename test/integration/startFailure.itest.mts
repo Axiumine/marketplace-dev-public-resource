@@ -56,22 +56,24 @@ describe('start() when MongoDB refuses the connection', () => {
 	 * calling checkRequiredEnv() directly, so it is that ordering being tested and not just the
 	 * guard's own loop.
 	 *
-	 * DSN stands in for the missing variable here rather than a Keygrip key: this is the public
-	 * tier's catalog service, it signs no cookies, and REQUIRED_ENV_VARS carries no KEYGRIP_KEY_*
-	 * at all — DSN is the one entry that is otherwise inert to this test (it only feeds Sentry,
-	 * never a datasource connection).
+	 * REDIS_KEY stands in for the missing variable here rather than a Keygrip key: this is the public
+	 * tier's catalog service, it signs no cookies, and REQUIRED_ENV_VARS carries no KEYGRIP_KEY_* at
+	 * all. It also has to be an entry no connection reads, or the two assertions below would hold for
+	 * the wrong reason — REDIS_KEY is only a session-key prefix, so if the guard ever moved inside
+	 * start()'s try both datasources would come up and this test would fail, which is the point.
+	 * DSN used to play that role and cannot any more: Sentry is optional, so it is no longer required.
 	 */
 	it('refuses to boot at all, and connects nothing, when a required variable is missing', async () => {
-		const realDsn = process.env.DSN
-		delete process.env.DSN
+		const realRedisKey = process.env.REDIS_KEY
+		delete process.env.REDIS_KEY
 
 		try {
-			await expect(start()).rejects.toThrow('Missing required environment variable: DSN')
+			await expect(start()).rejects.toThrow('Missing required environment variable: REDIS_KEY')
 
 			expect(mongoose.connection.readyState).toBe(0)
 			expect(redisClient.isOpen).toBe(false)
 		} finally {
-			process.env.DSN = realDsn
+			process.env.REDIS_KEY = realRedisKey
 		}
 	})
 })

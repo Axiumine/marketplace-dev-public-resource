@@ -111,6 +111,8 @@ INTROSPECTION_CODE='xxx'
 # registration; a development one registers freely. Both are the intended reading of "no secret".
 TURNSTILE_SECRET=
 
+# Optional: an empty or missing DSN leaves the Sentry SDK inert and the service still boots.
+# Deliberately absent from REQUIRED_ENV_VARS in src/index.mts — do not add it back.
 DSN="https://xxxxxxxxxxxxxx@bugsink.lan/1"
 
 

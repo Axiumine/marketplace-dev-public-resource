@@ -171,6 +171,40 @@ describe('createServer', () => {
 			await apolloServer.stop()
 		}
 	})
+
+	// The dispatch middleware is driven directly, from `app.middleware`, rather than through a socket:
+	// it is the last thing createServer() pushes onto the Koa stack, and its two non-Apollo branches are
+	// plain ctx writes. Only test/integration/index.itest.mts sends a real request, and it is not in the
+	// mutation run — so without this the `else { await next() }` arm had no unit coverage at all, which
+	// Stryker reports as NoCoverage: a mutant nothing even attempted to kill.
+	it('answers /health itself and hands every other path to the next middleware', async () => {
+		const { app, apolloServer } = await createServer()
+		const dispatch = app.middleware.at(-1)!
+
+		try {
+			const health = { path: '/health' } as never as { path: string; body: { status: string }; status: number }
+			const healthNext = vi.fn()
+			await dispatch(health as never, healthNext)
+
+			expect(health.body.status).toBe('OK')
+			expect(health.status).toBe(200)
+			// Answering here and calling next() would run the rest of the stack over a response that is
+			// already written — the 200 stands, and whatever the next middleware writes is appended to it.
+			expect(healthNext).not.toHaveBeenCalled()
+
+			// ⚠️ Falls through rather than 404ing here: `router.routes()` sits *earlier* in the stack, so
+			// by the time an unknown path reaches this arm the REST routes have already declined it, and
+			// `router.allowedMethods()` is what turns that into a 404/405. Answering here would take the
+			// verify-email routes' error handling away from the router that owns them.
+			const other = { path: '/verify-email-user/x/y' }
+			const otherNext = vi.fn()
+			await dispatch(other as never, otherNext)
+
+			expect(otherNext).toHaveBeenCalledOnce()
+		} finally {
+			await apolloServer.stop()
+		}
+	})
 })
 
 describe('gracefulShutdown', () => {

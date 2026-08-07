@@ -78,7 +78,9 @@ export const companiesNearby = {
 		// are bounded by different things — one by what a reader scrolls, the other by what a browser
 		// can draw and what a viewport payload may weigh.
 		const requested = args.limit ?? MAX_NEARBY
-		const limit = requested < 1 ? 1 : Math.min(requested, MAX_NEARBY)
+		// `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
+		// `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
+		const limit = Math.min(Math.max(requested, 1), MAX_NEARBY)
 
 		// limit + 1, so `truncated` is exact for the cost of one extra row. A bare `=== limit` cannot
 		// tell a full page from a region that happens to hold exactly that many shops.

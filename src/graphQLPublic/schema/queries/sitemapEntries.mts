@@ -69,7 +69,9 @@ export const sitemapEntries = {
 	},
 	async resolve(_: unknown, args: IArgs): Promise<IPage> {
 		const requested = args.limit ?? DEFAULT_SITEMAP_LIMIT
-		const limit = requested < 1 ? 1 : Math.min(requested, MAX_SITEMAP_LIMIT)
+		// `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
+		// `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
+		const limit = Math.min(Math.max(requested, 1), MAX_SITEMAP_LIMIT)
 		const afterId = args.afterId ? assertObjectId(args.afterId, 'afterId') : undefined
 
 		if (args.kind === 'COMPANY') return await companyPaths(afterId, limit)

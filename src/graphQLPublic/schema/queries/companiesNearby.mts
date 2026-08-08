@@ -1,3 +1,4 @@
+import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
 import { GraphQLInputBoundingBox, GraphQLInputNearPoint } from '@GraphQLInput/GraphQLInputGeo.mjs'
 // No `centerSphereFilter` here, deliberately: the map's radius path wants distances back, so it uses
 // `$geoNear` — which sorts and reports `distanceMeters` — while `centerSphereFilter` exists for the one
@@ -5,7 +6,6 @@ import { GraphQLInputBoundingBox, GraphQLInputNearPoint } from '@GraphQLInput/Gr
 import { assertNearPoint, bboxToPolygon, IBoundingBox, INearPoint, MAX_NEARBY } from '@lib/catalogue/geoArgs.mjs'
 import { LIVE_PUBLIC_PIPELINE, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicCompanyNearbyResult } from '@ptypes/GraphQLPublicCompanyNearby.mjs'
-import { Company } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Company'
 import { GraphQLInt, GraphQLNonNull } from 'graphql'
 import { trusted, Types } from 'mongoose'
 

@@ -1,4 +1,4 @@
-import { User } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/User'
+import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 // Sentinels: both factories are koa-utils' and are tested there. What this file pins is what WE hand

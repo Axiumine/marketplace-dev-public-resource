@@ -1,5 +1,5 @@
+import { GraphQLBaseAddressFrag } from '@axiumine/marketplace-common/schema/types/fragments/GraphQLBaseAddressFrag'
 import { GraphQLPublicPosition } from '@ptypes/GraphQLPublicPosition.mjs'
-import { GraphQLBaseAddressFrag } from '@thedoctorweb_agency/marketplace-common/schema/types/fragments/GraphQLBaseAddressFrag'
 import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'graphql'
 
 /**

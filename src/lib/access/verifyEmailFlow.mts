@@ -1,6 +1,6 @@
 import type { IVerifyEmailPaths } from '@axiumine/koa-utils/lib/access/accessPaths'
 import { createVerifyEmailFlow, IVerifyEmailFlow } from '@axiumine/koa-utils/lib/access/createVerifyEmailFlow'
-import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
+import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 
 /**
  * Where the email-verification flow finds its fields on `shopOwner`.

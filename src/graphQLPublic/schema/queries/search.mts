@@ -1,9 +1,9 @@
+import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
 import { GraphQLInputNearPoint } from '@GraphQLInput/GraphQLInputGeo.mjs'
 import { assertNearPoint, centerSphereFilter, INearPoint } from '@lib/catalogue/geoArgs.mjs'
 import { liveItemsAcrossShops } from '@lib/catalogue/liveItemsAcrossShops.mjs'
 import { clampLimit, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicSearchResult } from '@ptypes/GraphQLPublicSearchResult.mjs'
-import { Company } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Company'
 import { GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql'
 import { trusted } from 'mongoose'
 

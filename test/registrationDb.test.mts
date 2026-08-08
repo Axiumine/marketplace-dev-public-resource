@@ -9,7 +9,7 @@ const userFindOne = vi.fn()
 
 vi.mock('@axiumine/koa-utils/lib/emailHash', () => ({ emailHash }))
 vi.mock('@axiumine/koa-utils/lib/encryptPassword', () => ({ encryptPassword }))
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/User', () => ({
+vi.mock('@axiumine/marketplace-common/models/MongoDB/User', () => ({
 	User: { create: userCreate, updateOne: userUpdateOne, findOne: userFindOne }
 }))
 

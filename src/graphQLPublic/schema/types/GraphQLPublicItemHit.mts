@@ -1,4 +1,4 @@
-import { GraphQLItemFrag } from '@thedoctorweb_agency/marketplace-common/schema/types/fragments/GraphQLItemFrag'
+import { GraphQLItemFrag } from '@axiumine/marketplace-common/schema/types/fragments/GraphQLItemFrag'
 import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'graphql'
 
 /**

@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const companyFindOne = vi.fn()
 const itemAggregate = vi.fn()
 
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/Company', () => ({ Company: { findOne: companyFindOne } }))
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/Item', () => ({ Item: { aggregate: itemAggregate } }))
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({ Company: { findOne: companyFindOne } }))
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Item', () => ({ Item: { aggregate: itemAggregate } }))
 
 const { liveCompanyBySlug } = await import('../src/lib/catalogue/liveCompanyBySlug.mts')
 const { liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET, OVERFETCH } = await import('../src/lib/catalogue/liveItemsAcrossShops.mts')

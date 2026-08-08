@@ -1,5 +1,5 @@
 import { encryptPassword } from '@axiumine/koa-utils/lib/encryptPassword'
-import { User } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/User'
+import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { ClientSession, Types } from 'mongoose'
 
 /**

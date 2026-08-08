@@ -1,4 +1,4 @@
-import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
+import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 // Sentinel: the factory is koa-utils' and is tested there. What this file pins is what WE hand it,

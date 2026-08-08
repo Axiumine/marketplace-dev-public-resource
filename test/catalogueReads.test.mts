@@ -25,23 +25,23 @@ describe('liveCompanyBySlug', () => {
 	// into a filter the item query never has to know about — which is why the liveness pair has to be
 	// in this filter and not merely in the caller.
 	it('seeks the slug, and only a live shop answers', async () => {
-		const company = { _id: idCompany, slug: 'bakery-mario', publicName: 'Bakery Mario' }
+		const company = { _id: idCompany, slug: 'mark-boutique', publicName: 'Mark Boutique' }
 		companyFindOne.mockReturnValueOnce(leaning(company))
 
-		await expect(liveCompanyBySlug('bakery-mario')).resolves.toBe(company)
+		await expect(liveCompanyBySlug('mark-boutique')).resolves.toBe(company)
 
-		expect(companyFindOne).toHaveBeenCalledExactlyOnceWith({ slug: 'bakery-mario', ...live }, '_id slug publicName')
+		expect(companyFindOne).toHaveBeenCalledExactlyOnceWith({ slug: 'mark-boutique', ...live }, '_id slug publicName')
 	})
 
 	// ⚠️ The projection is a security boundary, not a saving. `vatNumber`, `certifiedEmail`,
 	// `legalName`, `registryExtract` and `taxCode` live on this same document; naming three fields
-	// keeps a partita IVA out of this process's memory, its query logs and any Sentry breadcrumb,
+	// keeps a VAT number out of this process's memory, its query logs and any Sentry breadcrumb,
 	// rather than out of one response. `slug` and `publicName` are there because callers building an
 	// item URL or an item card would otherwise issue a second read for them.
 	it('asks for exactly the three fields a caller downstream needs', async () => {
 		companyFindOne.mockReturnValueOnce(leaning(null))
 
-		await liveCompanyBySlug('bakery-mario')
+		await liveCompanyBySlug('mark-boutique')
 
 		const projection = companyFindOne.mock.calls[0][1] as string
 
@@ -78,7 +78,7 @@ describe('liveItemsAcrossShops', () => {
 	}
 
 	it('returns the aggregation’s rows untouched', async () => {
-		const hits = [{ _id: idCompany, name: 'Focaccia' }]
+		const hits = [{ _id: idCompany, name: 'Sneaker' }]
 		itemAggregate.mockResolvedValueOnce(hits)
 
 		await expect(liveItemsAcrossShops({ idCategory: idCompany }, {}, { _id: 1 }, 0, 24)).resolves.toBe(hits)
@@ -88,9 +88,9 @@ describe('liveItemsAcrossShops', () => {
 	// only; aggregation stages reach the driver untouched, so a `trusted()` wrapper here is an unknown
 	// object the server rejects. The exact inverse of the rule that applies to `livePublic()`.
 	it('ANDs the caller’s match with the liveness pair, spelled plainly', async () => {
-		const [stage] = await runPipeline({ $text: { $search: 'focaccia' } })
+		const [stage] = await runPipeline({ $text: { $search: 'sneaker' } })
 
-		expect(stage).toEqual({ $match: { $text: { $search: 'focaccia' }, published: true, deleted: { $exists: false } } })
+		expect(stage).toEqual({ $match: { $text: { $search: 'sneaker' }, published: true, deleted: { $exists: false } } })
 		expect(Object.getOwnPropertySymbols((stage as PipelineStage.Match).$match.deleted!)).toHaveLength(0)
 	})
 
@@ -133,7 +133,7 @@ describe('liveItemsAcrossShops', () => {
 	// its shop's, so the predicate belongs on the company being joined, ANDed with *its* liveness pair.
 	it('ANDs a company-side predicate into the sub-pipeline’s match', async () => {
 		const geo = { 'address.position': { $geoWithin: { $centerSphere: [[9.19, 45.46], 0.001] } } }
-		const pipeline = await runPipeline({ $text: { $search: 'focaccia' } }, geo)
+		const pipeline = await runPipeline({ $text: { $search: 'sneaker' } }, geo)
 
 		expect((pipeline[3] as PipelineStage.Lookup).$lookup.pipeline![0]).toEqual({
 			$match: { ...geo, published: true, deleted: { $exists: false } }

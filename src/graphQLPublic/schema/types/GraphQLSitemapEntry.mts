@@ -21,7 +21,7 @@ export const GraphQLSitemapKind = new GraphQLEnumType({
 /**
  * One `<url>` of a sitemap: the site-relative path, and nothing else.
  *
- * The path is emitted relative (`/shop/pizzeria-roma`) rather than absolute because this service
+ * The path is emitted relative (`/shop/main-boutique`) rather than absolute because this service
  * does not know the customer domain — `APP_DOMAIN_USER` belongs to the flow that mails a
  * verification link, and the sitemap is written by the frontend, which knows the host it is being
  * served on. A backend that guesses the origin produces a sitemap full of URLs pointing at the wrong

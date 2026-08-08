@@ -177,7 +177,7 @@ The only survivor in the first real run was in `publicHelloArgs.mts`'s `console.
 name: ', args.name)`: the test called `resolve()` and asserted the returned greeting, but nothing
 checked what was logged, so Stryker's `StringLiteral` mutant (blanking the message to `''`) passed
 unnoticed. The fix, in `test/schema.test.mts`, spies on `console.debug` and asserts the exact call —
-`toHaveBeenCalledExactlyOnceWith('publicHelloArgs: name: ', 'Mario')` — rather than the weaker
+`toHaveBeenCalledExactlyOnceWith('publicHelloArgs: name: ', 'Mark')` — rather than the weaker
 `toHaveBeenCalled()`, which would pass for the mutant too.
 
 ## Running it

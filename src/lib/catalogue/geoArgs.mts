@@ -31,7 +31,7 @@ export const MAX_RADIUS_METERS = 200_000
  * A bounding box is a map viewport, and a viewport wider than this is a zoomed-out map that cannot
  * usefully render individual pins anyway. The cap is what keeps a `$geoWithin` from degenerating
  * into a scan of every published company on the platform. 10° of latitude is about 1100 km — the
- * whole of Italy fits.
+ * whole of a mid-sized country fits.
  */
 export const MAX_BBOX_DEGREES = 10
 
@@ -105,7 +105,7 @@ export function centerSphereFilter(near: INearPoint) {
  * A polygon rather than the shorter `$box`, because `$box` is a legacy 2d operator: it is *accepted*
  * against a `2dsphere` index but interpreted with planar geometry, so its edges are straight lines
  * on an equirectangular projection rather than on the sphere the index actually models. The two
- * disagree by kilometres at Italian latitudes — a shop just inside the drawn rectangle can fall
+ * disagree by kilometres at mid latitudes — a shop just inside the drawn rectangle can fall
  * outside the queried one — and the disagreement grows with the box.
  *
  * The ring is emitted counter-clockwise and closed. MongoDB reads a GeoJSON polygon by the
@@ -114,7 +114,7 @@ export function centerSphereFilter(near: INearPoint) {
  *
  * ⚠️ **A box crossing the antimeridian is rejected rather than split.** `minLng > maxLng` is how a
  * map library expresses "the viewport wraps past ±180°", and answering it correctly means two
- * polygons and a `$or`. Nothing on an Italy-only platform can produce that viewport, so it is
+ * polygons and a `$or`. Nothing on a single-country platform can produce that viewport, so it is
  * refused with a message that says what happened instead of silently returning the inverted
  * rectangle — which is what a naive polygon build would do, and it would appear to work.
  */

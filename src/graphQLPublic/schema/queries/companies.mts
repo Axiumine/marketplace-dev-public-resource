@@ -18,7 +18,7 @@ interface IArgs {
  * does not declare those fields, so GraphQL would refuse to serve them — but relying on that means
  * the whole document is in this process's memory, in its query logs and in any Sentry breadcrumb
  * that captures a mongoose event, on every request from the open internet. Naming the five public
- * fields keeps a partita IVA out of the service entirely rather than out of one response.
+ * fields keeps a VAT number out of the service entirely rather than out of one response.
  *
  * Every public read of `company` in this service uses this constant. Adding a field to it is adding
  * a field to the public site.

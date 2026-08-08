@@ -22,8 +22,8 @@ interface IItemRow {
  * `/shop/:companySlug/item/:slug` — one item's page.
  *
  * Two arguments and not one, because `item.slug` is unique **per company** rather than globally:
- * `20260804030000-create-item` made that choice so two shops may both sell a "margherita" without
- * one of them having to call it "margherita-2". The pair is therefore the identifier, and the URL
+ * `20260804030000-create-item` made that choice so two shops may both sell a "blue-shirt" without
+ * one of them having to call it "blue-shirt-2". The pair is therefore the identifier, and the URL
  * spells it as the pair.
  *
  * Two reads, in this order and not the other. Resolving the shop first is what enforces the

@@ -22,14 +22,14 @@ import { LIVE_PUBLIC_PIPELINE } from './publicRead.mjs'
  * ## The compromise, stated plainly
  *
  * `$lookup` cannot run before the `$limit` — a category can span every shop on the platform, and
- * joining company rows onto a hundred thousand items to return sixty is not a query, it is an
- * outage. So the pipeline limits first and joins second, which means rows are **dropped after the
+ * joining company documents onto a hundred thousand items to return sixty is not a query, it is an
+ * outage. So the pipeline limits first and joins second, which means documents are **dropped after the
  * window was chosen**: items whose shop has since been unpublished vanish from the page they would
  * have filled.
  *
  * `OVERFETCH` is the mitigation and it is not a fix. Fetching three times the window makes the
  * shortfall invisible for any realistic ratio of unpublished shops, and cannot make it impossible:
- * if every item in the fetched window belongs to an unpublished shop, this returns fewer rows than
+ * if every item in the fetched window belongs to an unpublished shop, this returns fewer documents than
  * exist. That is why `total` from these paths is reported with `totalIsExact: false` — the count
  * cannot see the company half either, so it is an upper bound.
  *
@@ -39,7 +39,7 @@ import { LIVE_PUBLIC_PIPELINE } from './publicRead.mjs'
  * migration on `item`, a backfill, and a `$set` in *every* resolver that can change a company's
  * publication — `companyUpdate` on the ShopOwner tier and the Admin tier's moderation paths — each
  * of which must fan the change out over that company's whole catalogue. A half-wired denormalisation
- * is worse than none, because it is wrong only for the rows nobody remembered.
+ * is worse than none, because it is wrong only for the documents nobody remembered.
  *
  * ⚠️ **No `trusted()` anywhere below.** `sanitizeFilter` wraps mongoose `Query` filters only;
  * aggregation stages go to the driver untouched, so `{ $exists: false }` is read as the operator it
@@ -47,13 +47,13 @@ import { LIVE_PUBLIC_PIPELINE } from './publicRead.mjs'
  * rule that applies three lines away in `livePublic()`.
  */
 
-/** Rows fetched per row wanted, before the company join drops some of them. See above. */
+/** Documents fetched per item wanted, before the company join drops some of them. See above. */
 export const OVERFETCH = 3
 
 /**
  * Deepest page the cross-shop paths will serve — much shallower than `MAX_OFFSET`.
  *
- * Every skipped row is multiplied by `OVERFETCH` and then fed through a join, so the cost of depth
+ * Every skipped document is multiplied by `OVERFETCH` and then fed through a join, so the cost of depth
  * here is three index seeks per skipped item rather than one discarded index entry. 2000 is where
  * that stays bounded, and it is well past any page a reader or a crawler reaches: `/category/:slug`
  * at page 34 is not a journey, and the shops behind it are reachable through `/shops` and the
@@ -81,7 +81,7 @@ export interface IItemHit {
  *                     pair inside the `$lookup` sub-pipeline. This is where a geographic bound goes:
  *                     an item has no coordinates of its own and inherits its shop's, so "items near
  *                     me" is an item text match whose *company* is inside the circle. ⚠️ Every
- *                     predicate added here raises the share of fetched rows the join discards, and
+ *                     predicate added here raises the share of fetched documents the join discards, and
  *                     `OVERFETCH` is what absorbs that — a bound narrow enough to reject most shops
  *                     will shorten pages before it empties them.
  * @param sort         the `$sort` stage. Search sorts by text score, the listing by `_id`; the

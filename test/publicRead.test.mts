@@ -77,7 +77,7 @@ describe('clampLimit', () => {
 		expect(clampLimit(value)).toBe(DEFAULT_LIMIT)
 	})
 
-	// The floor is 1 rather than 0: a page of zero rows is a request that costs a round trip and
+	// The floor is 1 rather than 0: a page of zero documents is a request that costs a round trip and
 	// answers nothing, and `limit(0)` means *no limit* to the MongoDB driver — the one value that
 	// would turn a clamped listing into an unbounded collection scan.
 	it.each([
@@ -124,7 +124,7 @@ describe('assertOffset', () => {
 		)
 	})
 
-	// The cross-shop paths pass their own, much lower cap — every skipped row there is multiplied by
+	// The cross-shop paths pass their own, much lower cap — every skipped document there is multiplied by
 	// OVERFETCH and then fed through a join. A caller-supplied max has to appear in the message too,
 	// or the refusal names a limit that was never applied.
 	it('honours a caller-supplied cap, and reports that one', () => {

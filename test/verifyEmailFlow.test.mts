@@ -48,9 +48,9 @@ describe('verifyEmailFlow', () => {
 	})
 
 	// Disposal policy. koa-utils 5.6.1 had no such option: both abandon guards hard-deleted, and on
-	// `shopOwner` that dropped the row while its `company` → `item` → `itemCategory` chain went
+	// `shopOwner` that dropped the document while its `company` → `item` → `itemCategory` chain went
 	// on pointing at an idShopOwner nothing resolved any more.
-	it('soft-deletes an abandoned registration instead of dropping the row', () => {
+	it('soft-deletes an abandoned registration instead of dropping the document', () => {
 		expect(createVerifyEmailFlow.mock.calls[0][0].onAbandon).toBe('soft-delete')
 	})
 

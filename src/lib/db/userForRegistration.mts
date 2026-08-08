@@ -12,7 +12,7 @@ export interface IUserForRegistration {
  * Looks up a registration by address.
  *
  * ⚠️ **No `deleted` filter, deliberately.** `login.email` carries a plain unique index with no
- * `partialFilterExpression`, so a soft-deleted row still occupies its address and a `create` behind a
+ * `partialFilterExpression`, so a soft-deleted document still occupies its address and a `create` behind a
  * liveness filter would fail on the index rather than on a branch anyone can read. The caller decides
  * what a tombstone means — `userRegister` treats an unverified one as an abandoned attempt and
  * restarts it. Same rule as the delete paths on `company`: liveness filters belong on read paths that

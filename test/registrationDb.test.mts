@@ -85,7 +85,7 @@ describe('registerNewUser', () => {
 	})
 
 	// The `_id` is minted here rather than left to mongoose because the caller needs it inside the same
-	// transaction. A fresh one per call, so a retried registration cannot collide with the row it retries.
+	// transaction. A fresh one per call, so a retried registration cannot collide with the document it retries.
 	it('mints a fresh id per registration', async () => {
 		await registerNewUser('first@marketplace.test', 'sup3r-secret', session)
 		await registerNewUser('second@marketplace.test', 'sup3r-secret', session)
@@ -106,12 +106,12 @@ describe('registerNewUser', () => {
 })
 
 describe('restartUserRegistration', () => {
-	// ⚠️ This overwrites a stored password with nothing proved, and it is safe **only** because the row
-	// is not yet an account: `loginUser` refuses every row whose `emailVerify.valid` is not true, so the
+	// ⚠️ This overwrites a stored password with nothing proved, and it is safe **only** because the document
+	// is not yet an account: `loginUser` refuses every document whose `emailVerify.valid` is not true, so the
 	// mail to that address is the proof. What it buys is recovery from a mistyped password whose
-	// confirmation mail never arrived. On a verified row the same write would be an unauthenticated
+	// confirmation mail never arrived. On a verified document the same write would be an unauthenticated
 	// password reset — which is why the caller checks `valid` and this helper is never reached otherwise.
-	it('re-encrypts the newly supplied password onto the pending row', async () => {
+	it('re-encrypts the newly supplied password onto the pending document', async () => {
 		await restartUserRegistration(session, userId, 'a-different-password')
 
 		expect(encryptPassword).toHaveBeenCalledExactlyOnceWith('a-different-password')
@@ -119,7 +119,7 @@ describe('restartUserRegistration', () => {
 	})
 
 	// ⚠️ `$unset` and not `$set: { deleted: null }`. The abandon guards soft-delete — five wrong hashes,
-	// or a link older than three days — and the tombstoned row keeps holding its unique `login.email`.
+	// or a link older than three days — and the tombstoned document keeps holding its unique `login.email`.
 	// Leaving `deleted` in place would make that address permanently unusable by the person who chose it,
 	// which is not what a three-day timeout is meant to mean. A null would satisfy no validator either.
 	it('clears the abandon tombstone in the same write', async () => {
@@ -159,7 +159,7 @@ describe('userForRegistration', () => {
 	}
 
 	// ⚠️ **No `deleted` filter, deliberately.** `login.email` carries a plain unique index with no
-	// `partialFilterExpression`, so a tombstoned row still occupies its address: a lookup behind a
+	// `partialFilterExpression`, so a tombstoned document still occupies its address: a lookup behind a
 	// liveness filter would report "free", and the `create` behind it would then fail on the *index*
 	// rather than on a branch anyone can read. The caller decides what a tombstone means.
 	it('seeks the address alone, tombstones included', async () => {
@@ -185,15 +185,15 @@ describe('userForRegistration', () => {
 		expect(projection).not.toMatch(/password|login\.email/)
 	})
 
-	// Read inside the transaction, so the row this decides on is the row the write then updates — the
+	// Read inside the transaction, so the document this decides on is the document the write then updates — the
 	// alternative is deciding "no such registration" against a snapshot another request has already
 	// changed, and inserting a duplicate the unique index refuses.
 	it('reads through the caller’s session and returns a lean document', async () => {
-		const row = { _id: userId, emailVerify: { valid: false } }
-		const query = chain(row)
+		const doc = { _id: userId, emailVerify: { valid: false } }
+		const query = chain(doc)
 		userFindOne.mockReturnValueOnce(query)
 
-		await expect(userForRegistration('customer@marketplace.test', session)).resolves.toBe(row)
+		await expect(userForRegistration('customer@marketplace.test', session)).resolves.toBe(doc)
 
 		expect(query.session).toHaveBeenCalledExactlyOnceWith(session)
 	})

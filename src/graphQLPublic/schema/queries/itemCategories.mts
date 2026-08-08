@@ -18,15 +18,15 @@ import { trusted } from 'mongoose'
  * validator because a parent's own `idParent` is in another document and a `$jsonSchema` sees one.
  *
  * `deleted` is filtered; `published` is not, because categories have no such flag. A category is not
- * a draft — it exists platform-wide the moment an operator creates it. Soft-deleted rows stay in the
- * collection because `item.idCategory` is required and MongoDB has no foreign keys, so a hard delete
- * would leave items pointing at nothing.
+ * a draft — it exists platform-wide the moment an operator creates it. Soft-deleted documents stay
+ * in the collection because `item.idCategory` is required, so a hard delete would leave items
+ * pointing at nothing.
  *
  * Sorted by `position` — a **sort ordinal**, not the GeoJSON `position` that `company.address`
  * carries; the two share a name and nothing else. `_id` breaks the tie so two categories given the
  * same ordinal do not swap places between two reads of the same data. The sort is not index-backed
  * (`idParent_position` leads with the parent) and does not need to be: an admin-curated menu is tens
- * of rows, and the alternative — a `{ position: 1 }` index — would cost a write per category edit to
+ * of documents, and the alternative — a `{ position: 1 }` index — would cost a write per category edit to
  * save a sort of a page that nginx caches anyway.
  *
  * trusted(): `sanitizeFilter` is on globally, so a bare `{ $exists: false }` would be cast as a

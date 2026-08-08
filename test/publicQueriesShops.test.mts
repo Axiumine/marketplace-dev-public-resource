@@ -23,13 +23,13 @@ interface IChain {
 }
 
 /** A mongoose `Query`, mocked as the fluent object it is: every link returns itself, `lean` resolves. */
-const chain = (rows: unknown): IChain => {
+const chain = (docs: unknown): IChain => {
 	const self = {} as IChain
 
 	self.sort = vi.fn(() => self)
 	self.skip = vi.fn(() => self)
 	self.limit = vi.fn(() => self)
-	self.lean = vi.fn(async () => rows)
+	self.lean = vi.fn(async () => docs)
 
 	return self
 }
@@ -75,8 +75,8 @@ describe('PUBLIC_COMPANY_PROJECTION', () => {
 })
 
 describe('companies', () => {
-	const resolve = async (args: Record<string, unknown> = {}, rows: unknown[] = [], total = 0) => {
-		const query = chain(rows)
+	const resolve = async (args: Record<string, unknown> = {}, docs: unknown[] = [], total = 0) => {
+		const query = chain(docs)
 		companyFind.mockReturnValueOnce(query)
 		companyCountDocuments.mockResolvedValueOnce(total)
 
@@ -105,10 +105,10 @@ describe('companies', () => {
 	})
 
 	// ⚠️ `limit + 1` rather than a second count: one extra index entry answers "is there another page"
-	// exactly, and stays exact past `COUNT_CAP` where `total` no longer is. The extra row is dropped.
-	it('fetches one row past the window to answer hasMore, and drops it', async () => {
-		const rows = [shop(1), shop(2), shop(3)]
-		const { page, query } = await resolve({ limit: 2 }, rows)
+	// exactly, and stays exact past `COUNT_CAP` where `total` no longer is. The extra document is dropped.
+	it('fetches one document past the window to answer hasMore, and drops it', async () => {
+		const docs = [shop(1), shop(2), shop(3)]
+		const { page, query } = await resolve({ limit: 2 }, docs)
 
 		expect(query.limit).toHaveBeenCalledExactlyOnceWith(3)
 		expect(page.hasMore).toBe(true)
@@ -247,8 +247,8 @@ describe('companiesNearby', () => {
 	describe('the radius path', () => {
 		const near = { ...MILAN, radiusMeters: 5_000 }
 
-		const resolveNear = async (args: Record<string, unknown> = {}, rows: unknown[] = []) => {
-			companyAggregate.mockResolvedValueOnce(rows)
+		const resolveNear = async (args: Record<string, unknown> = {}, docs: unknown[] = []) => {
+			companyAggregate.mockResolvedValueOnce(docs)
 
 			const result = await companiesNearby.resolve(null, { near, ...args })
 
@@ -308,7 +308,7 @@ describe('companiesNearby', () => {
 			expect(pipeline[1]).toEqual({ $limit: expected })
 		})
 
-		// A bare `rows.length === limit` cannot tell a full page from a region holding exactly that many
+		// A bare `pins.length === limit` cannot tell a full page from a region holding exactly that many
 		// shops, and the map draws "there are more shops here" from this flag.
 		it('reports truncation exactly, and returns only the asked-for pins', async () => {
 			const { result } = await resolveNear({ limit: 2 }, [pin(1), pin(2), pin(3)])
@@ -334,8 +334,8 @@ describe('companiesNearby', () => {
 	})
 
 	describe('the viewport path', () => {
-		const resolveBox = async (args: Record<string, unknown> = {}, rows: unknown[] = []) => {
-			const query = chain(rows)
+		const resolveBox = async (args: Record<string, unknown> = {}, docs: unknown[] = []) => {
+			const query = chain(docs)
 			companyFind.mockReturnValueOnce(query)
 
 			return { result: await companiesNearby.resolve(null, { bbox, ...args }), query }
@@ -404,13 +404,13 @@ describe('itemCategories', () => {
 	})
 
 	// `deleted` is filtered; `published` is not, because categories have no such flag — a category is not
-	// a draft, it exists platform-wide the moment an operator creates it. Soft-deleted rows stay because
+	// a draft, it exists platform-wide the moment an operator creates it. Soft-deleted documents stay because
 	// `item.idCategory` is required and MongoDB has no foreign keys.
 	it('filters only the tombstones, and keeps the trusted tag doing it', async () => {
-		const rows = [{ _id: new Types.ObjectId(), name: 'Bread', slug: 'bread', position: 1 }]
-		itemCategoryFind.mockReturnValueOnce(chain(rows))
+		const docs = [{ _id: new Types.ObjectId(), name: 'Bread', slug: 'bread', position: 1 }]
+		itemCategoryFind.mockReturnValueOnce(chain(docs))
 
-		await expect(itemCategories.resolve()).resolves.toBe(rows)
+		await expect(itemCategories.resolve()).resolves.toBe(docs)
 
 		expect(Object.keys(itemCategoryFind.mock.calls[0][0])).toEqual(['deleted'])
 		// The operator *and* its boolean, not just the key: `$exists: true` inverts the filter into

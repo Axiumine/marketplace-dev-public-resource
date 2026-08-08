@@ -21,7 +21,7 @@ import { trusted, Types } from 'mongoose'
  *
  * trusted(): `sanitizeFilter` is on globally, so a bare `{ $exists: false }` is taken as a literal
  * value and cast against the `deleted` path instead of being read as an operator — the filter then
- * silently matches nothing rather than matching the live rows. It is the single most repeated trap
+ * silently matches nothing rather than matching the live documents. It is the single most repeated trap
  * in this codebase.
  *
  * ⚠️ **Not usable in an aggregation pipeline.** `sanitizeFilter` wraps mongoose `Query` filters
@@ -79,7 +79,7 @@ export const COUNT_CAP = 5_000
 /**
  * Clamp a caller-supplied page size into `[1, MAX_LIMIT]`.
  *
- * Clamping rather than throwing, unlike `assertOffset`: an over-large `limit` still returns the rows
+ * Clamping rather than throwing, unlike `assertOffset`: an over-large `limit` still returns the documents
  * the caller wanted, in the right order, starting at the right place — the answer is a prefix of the
  * requested one and nothing about it is misleading. An over-large `offset` returns a *different*
  * window, which is why the two are handled differently.
@@ -102,7 +102,7 @@ export function clampLimit(limit?: number | null): number {
  * Negative is normalised because `skip(-1)` throws inside the driver with a message that names the
  * driver rather than the argument; past the cap is refused because clamping would lie.
  *
- * `max` is a parameter because the cross-shop paths are much more expensive per skipped row —
+ * `max` is a parameter because the cross-shop paths are much more expensive per skipped document —
  * `MAX_CROSS_SHOP_OFFSET` in `liveItemsAcrossShops.mts` explains why, and passes itself in.
  *
  * ⚠️ **`?? 0` and not `offset === undefined || offset === null`, on purpose** — and this is where it

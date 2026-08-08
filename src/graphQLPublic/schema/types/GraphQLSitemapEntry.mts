@@ -38,7 +38,7 @@ export const GraphQLSitemapKind = new GraphQLEnumType({
  * Closing it properly is one migration adding `updatedAt` to both collections plus a `$currentDate`
  * in every write resolver that touches them — `companyUpdate`, `itemAdd`, `itemUpdate`, `itemDel`
  * and the publish paths. Until all of those stamp it, a partially-wired `updatedAt` is worse than
- * none, because it is wrong only for the rows nobody remembered to cover.
+ * none, because it is wrong only for the documents nobody remembered to cover.
  */
 export const GraphQLSitemapEntry = new GraphQLObjectType({
 	name: 'GraphQLSitemapEntry',
@@ -58,7 +58,7 @@ export const GraphQLSitemapEntry = new GraphQLObjectType({
  *
  * `nextAfterId` is `null` exactly when the walk is finished, so the generator loops until it is
  * null and needs no count and no total — which is also what makes the walk correct while shops are
- * being created underneath it: a new row gets a larger `_id` and is picked up by a later page
+ * being created underneath it: a new document gets a larger `_id` and is picked up by a later page
  * instead of shifting every subsequent page by one the way an offset walk would.
  */
 export const GraphQLSitemapPage = new GraphQLObjectType({

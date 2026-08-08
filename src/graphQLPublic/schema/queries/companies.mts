@@ -40,9 +40,9 @@ export const PUBLIC_COMPANY_PROJECTION = '_id publicName slug description addres
  * can serve; a `$regex` on the same field cannot use it and would turn the second-most-requested
  * route into a scan.
  *
- * `limit + 1` rather than a second count: fetching one row past the window answers "is there another
+ * `limit + 1` rather than a second count: fetching one document past the window answers "is there another
  * page" exactly, for the cost of one index entry, and stays exact past `COUNT_CAP` where `total`
- * stops being. The extra row is dropped before it is returned.
+ * stops being. The extra document is dropped before it is returned.
  */
 export const companies = {
 	type: new GraphQLNonNull(GraphQLPublicCompanyPage),
@@ -58,7 +58,7 @@ export const companies = {
 
 		const filter = { ...livePublic(), ...(args.city ? { 'address.city': args.city } : {}) }
 
-		const [rows, total] = await Promise.all([
+		const [docs, total] = await Promise.all([
 			Company.find(filter, PUBLIC_COMPANY_PROJECTION)
 				.sort({ publicName: 1 })
 				.skip(offset)
@@ -70,11 +70,11 @@ export const companies = {
 			Company.countDocuments(filter, { limit: COUNT_CAP })
 		])
 
-		const hasMore = rows.length > limit
-		if (hasMore) rows.pop()
+		const hasMore = docs.length > limit
+		if (hasMore) docs.pop()
 
 		return {
-			nodes: rows,
+			nodes: docs,
 			total,
 			// Conservative at the boundary: a collection holding exactly COUNT_CAP matches reports
 			// `false` for a figure that happens to be exact. The other rounding — claiming exactness

@@ -20,7 +20,7 @@ interface IPage {
 }
 
 /**
- * Rows per call.
+ * Documents per call.
  *
  * Much larger than the listing page sizes because the caller is a sitemap generator, not a browser:
  * a shard holds up to 50 000 `<url>` elements and every extra round trip is a full request against
@@ -39,12 +39,12 @@ const DEFAULT_SITEMAP_LIMIT = 1_000
  * generating the whole file costs O(n²). Resuming from the last `_id` is a single index seek at any
  * depth. It is also *more correct* under concurrent writes — a shop created mid-walk gets a larger
  * `_id` and is picked up by a later page, where an offset walk would shift every remaining page by
- * one and drop a row.
+ * one and drop a document.
  *
  * Loop until `nextAfterId` comes back `null`. Do not stop on a short page: the `ITEM` walk returns
- * fewer rows than it scanned whenever an item's shop is unpublished, so a short page is normal and
+ * fewer documents than it scanned whenever an item's shop is unpublished, so a short page is normal and
  * says nothing about being finished. That is precisely why `nextAfterId` is derived from the **last
- * scanned** row rather than from the last returned one.
+ * scanned** document rather than from the last returned one.
  *
  * Paths come back **site-relative**. This service does not know the customer domain — `APP_DOMAIN`
  * belongs to the flow that mails verification links — and a backend that guesses the origin writes a
@@ -87,33 +87,33 @@ function after(afterId?: Types.ObjectId) {
 }
 
 async function companyPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
-	const rows = await Company.find({ ...livePublic(), ...after(afterId) }, '_id slug')
+	const docs = await Company.find({ ...livePublic(), ...after(afterId) }, '_id slug')
 		.sort({ _id: 1 })
 		.limit(limit)
 		.lean<{ _id: Types.ObjectId; slug: string }[]>()
 
 	return {
-		nodes: rows.map((row) => ({ path: `/shop/${row.slug}` })),
+		nodes: docs.map((doc) => ({ path: `/shop/${doc.slug}` })),
 		// Nothing is dropped after the fetch on this walk, so a short page really does mean the end.
-		nextAfterId: rows.length === limit ? rows[rows.length - 1]._id : null
+		nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
 	}
 }
 
 /**
- * The item walk, and the only one whose returned rows are fewer than its scanned rows: an item is
+ * The item walk, and the only one whose returned documents are fewer than its scanned documents: an item is
  * crawlable only if its shop is published too, and that check is a `$lookup` — the cross-document
  * rule `liveItemsAcrossShops` documents.
  *
  * `$facet` is what keeps the pagination exact through that filter. Both branches see the same
- * already-sorted, already-limited window, so `scanned` reports how many rows the walk consumed and
+ * already-sorted, already-limited window, so `scanned` reports how many documents the walk consumed and
  * `maxId` reports where it stopped — regardless of how many survived the join. Deriving the cursor
- * from the surviving rows instead would stall the walk on any window whose items all belong to
+ * from the surviving documents instead would stall the walk on any window whose items all belong to
  * unpublished shops: the last survivor would be from the *previous* page, and the next call would
  * re-read the same window forever.
  */
 async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
 	const [facet] = await Item.aggregate<{
-		rows: { slug: string; companySlug: string }[]
+		docs: { slug: string; companySlug: string }[]
 		scanned: { n: number }[]
 		tail: { maxId: Types.ObjectId }[]
 	}>([
@@ -122,7 +122,7 @@ async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Pr
 		{ $limit: limit },
 		{
 			$facet: {
-				rows: [
+				docs: [
 					{
 						$lookup: {
 							from: 'company',
@@ -145,7 +145,7 @@ async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Pr
 	const scanned = facet.scanned[0]?.n ?? 0
 
 	return {
-		nodes: facet.rows.map((row) => ({ path: `/shop/${row.companySlug}/item/${row.slug}` })),
+		nodes: facet.docs.map((doc) => ({ path: `/shop/${doc.companySlug}/item/${doc.slug}` })),
 		nextAfterId: scanned === limit ? facet.tail[0].maxId : null
 	}
 }
@@ -158,17 +158,17 @@ async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Pr
  * collection — and filters them for liveness. ⚠️ A subcategory whose parent has been soft-deleted is
  * dropped rather than emitted under a dead segment: its URL cannot be built without a parent slug,
  * and emitting `/category/undefined/x` into a sitemap is worse than emitting nothing. The page is
- * then short, which is why the cursor comes from the scanned rows here too.
+ * then short, which is why the cursor comes from the scanned documents here too.
  */
 async function categoryPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
 	const live = { deleted: trusted({ $exists: false }) }
 
-	const rows = await ItemCategory.find({ ...live, ...after(afterId) }, '_id slug idParent')
+	const docs = await ItemCategory.find({ ...live, ...after(afterId) }, '_id slug idParent')
 		.sort({ _id: 1 })
 		.limit(limit)
 		.lean<{ _id: Types.ObjectId; slug: string; idParent?: Types.ObjectId }[]>()
 
-	const parentIds = rows.filter((row) => row.idParent).map((row) => row.idParent!)
+	const parentIds = docs.filter((doc) => doc.idParent).map((doc) => doc.idParent!)
 	const parents = parentIds.length
 		? await ItemCategory.find({ _id: trusted({ $in: parentIds }), ...live }, '_id slug').lean<
 				{ _id: Types.ObjectId; slug: string }[]
@@ -177,19 +177,19 @@ async function categoryPaths(afterId: Types.ObjectId | undefined, limit: number)
 
 	const parentSlugById = new Map(parents.map((parent) => [parent._id.toString(), parent.slug]))
 
-	const nodes = rows
-		.map((row) => {
-			if (!row.idParent) return `/category/${row.slug}`
+	const nodes = docs
+		.map((doc) => {
+			if (!doc.idParent) return `/category/${doc.slug}`
 
-			const parentSlug = parentSlugById.get(row.idParent.toString())
+			const parentSlug = parentSlugById.get(doc.idParent.toString())
 
-			return parentSlug ? `/category/${parentSlug}/${row.slug}` : null
+			return parentSlug ? `/category/${parentSlug}/${doc.slug}` : null
 		})
 		.filter((path): path is string => path !== null)
 		.map((path) => ({ path }))
 
 	return {
 		nodes,
-		nextAfterId: rows.length === limit ? rows[rows.length - 1]._id : null
+		nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
 	}
 }

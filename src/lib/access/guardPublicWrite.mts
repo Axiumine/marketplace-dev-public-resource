@@ -17,7 +17,7 @@ export interface IGuardPublicWriteArgs {
 }
 
 /**
- * The gate in front of every unauthenticated mutation that writes a row or sends a mail.
+ * The gate in front of every unauthenticated mutation that writes a document or sends a mail.
  *
  * **Rate limit first, captcha second.** Verifying a Turnstile token is an outbound HTTPS round trip to
  * Cloudflare, so checking it before the counter would let a flood of tokenless requests each cost this

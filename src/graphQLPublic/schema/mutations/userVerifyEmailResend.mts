@@ -29,12 +29,12 @@ export interface IUserVerifyEmailResendArgs {
  *
  * ⚠️ **Answers `true` for every address, registered or not**, for the reason `userRegister` does: a
  * mutation that answers differently for a known address is an enumeration oracle, and one that costs
- * nothing to call is a good one. All four outcomes — no such row, tombstoned row, already-verified row,
+ * nothing to call is a good one. All four outcomes — no such document, tombstoned document, already-verified document,
  * link re-issued — look identical from outside.
  *
- * ⚠️ **A tombstoned row is left alone**, and unlike in `userRegister` it is not restarted. The abandon
+ * ⚠️ **A tombstoned document is left alone**, and unlike in `userRegister` it is not restarted. The abandon
  * guards stamp `deleted` after five wrong hashes or three days, and reviving that from an argument list
- * with no password in it would let anyone keep somebody else's abandoned row alive indefinitely.
+ * with no password in it would let anyone keep somebody else's abandoned document alive indefinitely.
  * Registering again is the recovery path, and it is the one that proves who is asking by setting a new
  * password that only the mail can activate.
  *

@@ -24,7 +24,7 @@ interface IPin {
 }
 
 /** Shape the bbox path fetches — `position` is still nested under `address` there. */
-interface IBboxRow {
+interface IBboxCompany {
 	_id: Types.ObjectId
 	publicName: string
 	slug: string
@@ -82,14 +82,14 @@ export const companiesNearby = {
 		// `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
 		const limit = Math.min(Math.max(requested, 1), MAX_NEARBY)
 
-		// limit + 1, so `truncated` is exact for the cost of one extra row. A bare `=== limit` cannot
+		// limit + 1, so `truncated` is exact for the cost of one extra pin. A bare `=== limit` cannot
 		// tell a full page from a region that happens to hold exactly that many shops.
-		const rows = args.near ? await pinsNear(args.near, limit + 1) : await pinsInBox(args.bbox!, limit + 1)
+		const pins = args.near ? await pinsNear(args.near, limit + 1) : await pinsInBox(args.bbox!, limit + 1)
 
-		const truncated = rows.length > limit
-		if (truncated) rows.pop()
+		const truncated = pins.length > limit
+		if (truncated) pins.pop()
 
-		return { nodes: rows, truncated }
+		return { nodes: pins, truncated }
 	}
 }
 
@@ -116,20 +116,20 @@ async function pinsNear(near: INearPoint, limit: number): Promise<IPin[]> {
 }
 
 async function pinsInBox(bbox: IBoundingBox, limit: number): Promise<IPin[]> {
-	const rows = await Company.find(
+	const docs = await Company.find(
 		{ ...livePublic(), 'address.position': trusted(bboxToPolygon(bbox)) },
 		'_id publicName slug address.position'
 	)
 		.limit(limit)
-		.lean<IBboxRow[]>()
+		.lean<IBboxCompany[]>()
 
 	// Flattened here rather than by a `$project`, because `find()` has no stage to do it in. The
 	// alternative — exposing `address` on the pin type — would ship four postal-address strings per
 	// marker that nothing draws.
-	return rows.map((row) => ({
-		_id: row._id,
-		publicName: row.publicName,
-		slug: row.slug,
-		position: row.address.position
+	return docs.map((doc) => ({
+		_id: doc._id,
+		publicName: doc.publicName,
+		slug: doc.slug,
+		position: doc.address.position
 	}))
 }

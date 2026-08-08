@@ -188,7 +188,7 @@ describe('userRegister — the three outcomes', () => {
 	// ⚠️ **All three answer `true`, and that is the security property rather than laziness.** A mutation
 	// that throws 409 for a taken address is an account-enumeration oracle: anyone can ask it, one
 	// address at a time, who has an account here. The outcomes are distinguishable only in the inbox.
-	it('writes the row and sends the link when the address is free', async () => {
+	it('writes the document and sends the link when the address is free', async () => {
 		await expect(userRegister.resolve(null, registerArgs, ctx)).resolves.toBe(true)
 
 		expect(userForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
@@ -198,7 +198,7 @@ describe('userRegister — the three outcomes', () => {
 		expect(emailAlreadyValid).not.toHaveBeenCalled()
 	})
 
-	// ⚠️ A verified row is somebody's account: nothing is written to it — not the password, not the hash.
+	// ⚠️ A verified document is somebody's account: nothing is written to it — not the password, not the hash.
 	// The "you already have an account" mail is the one message that helps its owner (they forgot they
 	// registered) without telling anybody else the address is taken.
 	it('writes nothing at all to a verified account, and says so only in the inbox', async () => {
@@ -227,12 +227,12 @@ describe('userRegister — the three outcomes', () => {
 		expect(registerNewUser).not.toHaveBeenCalled()
 	})
 
-	// The optional chain matters: `emailVerify` is absent on a row whose registration was interrupted
+	// The optional chain matters: `emailVerify` is absent on a document whose registration was interrupted
 	// between the insert and the flow. Reading that as "verified" would lock the address forever.
 	it.each([
 		['no emailVerify subdocument at all', { _id: userId }],
 		['an emailVerify with no valid flag', { _id: userId, emailVerify: {} }],
-		['a tombstoned unverified row', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }]
+		['a tombstoned unverified document', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }]
 	])('treats %s as an unfinished attempt', async (_desc, existing) => {
 		userForRegistration.mockResolvedValueOnce(existing)
 
@@ -242,9 +242,9 @@ describe('userRegister — the three outcomes', () => {
 		expect(emailAlreadyValid).not.toHaveBeenCalled()
 	})
 
-	// The restart is ordered: password first, then the hash, then the mail. A mail sent before the row
+	// The restart is ordered: password first, then the hash, then the mail. A mail sent before the document
 	// was rewritten would carry a link that activates the *old* password.
-	it('rewrites the row before it mints the hash, and mints before it sends', async () => {
+	it('rewrites the document before it mints the hash, and mints before it sends', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
 
 		await userRegister.resolve(null, registerArgs, ctx)
@@ -255,7 +255,7 @@ describe('userRegister — the three outcomes', () => {
 })
 
 describe('userRegister — the transaction', () => {
-	// One transaction so a mail is never sent for a row that failed to write. The reverse — row written,
+	// One transaction so a mail is never sent for a document that failed to write. The reverse — document written,
 	// SocketLabs then refuses — stays possible by design, and `userVerifyEmailResend` is the recovery.
 	it('does all of its work inside one transaction, and always ends the session', async () => {
 		await userRegister.resolve(null, registerArgs, ctx)
@@ -320,13 +320,13 @@ describe('userVerifyEmailResend', () => {
 		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
 	})
 
-	// ⚠️ All four outcomes are `true` and silent, for the reason `userRegister` is. A tombstoned row is
+	// ⚠️ All four outcomes are `true` and silent, for the reason `userRegister` is. A tombstoned document is
 	// left alone here and *not* restarted: reviving it from an argument list with no password would let
-	// anyone keep somebody else's abandoned row alive indefinitely. Registering again is the recovery,
+	// anyone keep somebody else's abandoned document alive indefinitely. Registering again is the recovery,
 	// and it proves who is asking by setting a password only the mail can activate.
 	it.each([
 		['no such registration', null],
-		['a tombstoned row', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }],
+		['a tombstoned document', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }],
 		['an account that is already verified', { _id: userId, emailVerify: { valid: true } }]
 	])('answers true and sends nothing for %s', async (_desc, existing) => {
 		userForRegistration.mockResolvedValueOnce(existing)
@@ -338,11 +338,11 @@ describe('userVerifyEmailResend', () => {
 		expect(userForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
 	})
 
-	// ⚠️ The `?.` is load-bearing on a row the projection allows to arrive without `emailVerify` — a
+	// ⚠️ The `?.` is load-bearing on a document the projection allows to arrive without `emailVerify` — a
 	// registration interrupted between its insert and its hash, or written by an older path. Reading
 	// `.valid` straight off it throws a TypeError inside the transaction, which `tryCatchRethrow` turns
 	// into a 500 on a mutation whose entire contract is "answers true and says nothing".
-	it('treats a row with no emailVerify as unverified, and re-issues rather than throwing', async () => {
+	it('treats a document with no emailVerify as unverified, and re-issues rather than throwing', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId })
 
 		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).resolves.toBe(true)

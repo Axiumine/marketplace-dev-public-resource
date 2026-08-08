@@ -86,7 +86,7 @@ describe('verifyEmailFlowUser', () => {
 	// a unique index with no `partialFilterExpression`, so a hard delete on an abandoned registration
 	// frees that address for anyone to claim — including whoever was mistyping it into the form. The
 	// tombstone keeps the address bound to the person who first proved they could receive mail there.
-	it('soft-deletes an abandoned registration instead of dropping the row', () => {
+	it('soft-deletes an abandoned registration instead of dropping the document', () => {
 		expect(createVerifyEmailFlow.mock.calls[0][0].onAbandon).toBe('soft-delete')
 	})
 

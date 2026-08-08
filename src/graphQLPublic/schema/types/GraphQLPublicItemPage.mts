@@ -5,7 +5,7 @@ import { GraphQLBoolean, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectT
  * One page of items — a shop's catalogue, or one slice of a category that spans every shop.
  *
  * Same envelope and the same caveats as `GraphQLPublicCompanyPage`: read that file for what
- * `totalIsExact` means and why `hasMore` is derived from the rows actually fetched rather than from
+ * `totalIsExact` means and why `hasMore` is derived from the documents actually fetched rather than from
  * `total`.
  *
  * ⚠️ **`totalIsExact` is `false` on the cross-shop path for a second reason**, on top of the count

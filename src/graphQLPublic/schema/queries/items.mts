@@ -15,7 +15,7 @@ interface IArgs {
 }
 
 /** What the shop-page path reads off `item`; the shop's own two fields are added from the company. */
-interface IShopItemRow {
+interface IShopItemDoc {
 	_id: Types.ObjectId
 	idCategory: Types.ObjectId
 	name: string
@@ -85,22 +85,22 @@ async function itemsOfShop(companySlug: string, idCategory: Types.ObjectId | und
 
 	const filter = { idCompany: company._id, ...livePublic(), ...(idCategory ? { idCategory } : {}) }
 
-	const [rows, total] = await Promise.all([
+	const [docs, total] = await Promise.all([
 		Item.find(filter, '_id idCategory name description slug')
 			.sort({ name: 1 })
 			.skip(offset)
 			.limit(limit + 1)
-			.lean<IShopItemRow[]>(),
+			.lean<IShopItemDoc[]>(),
 		Item.countDocuments(filter, { limit: COUNT_CAP })
 	])
 
-	const hasMore = rows.length > limit
-	if (hasMore) rows.pop()
+	const hasMore = docs.length > limit
+	if (hasMore) docs.pop()
 
 	return {
 		// The shop is already resolved, so its two identity fields are attached here for free rather
-		// than being re-read per row. This is what lets one node type serve all three item paths.
-		nodes: rows.map((row) => ({ ...row, companySlug: company.slug, companyPublicName: company.publicName })),
+		// than being re-read per item. This is what lets one node type serve all three item paths.
+		nodes: docs.map((doc) => ({ ...doc, companySlug: company.slug, companyPublicName: company.publicName })),
 		total,
 		totalIsExact: total < COUNT_CAP,
 		hasMore
@@ -108,16 +108,16 @@ async function itemsOfShop(companySlug: string, idCategory: Types.ObjectId | und
 }
 
 async function itemsOfCategory(idCategory: Types.ObjectId, limit: number, offset: number) {
-	const [rows, total] = await Promise.all([
+	const [docs, total] = await Promise.all([
 		liveItemsAcrossShops({ idCategory }, {}, { _id: 1 }, offset, limit + 1),
 		Item.countDocuments({ idCategory, ...livePublic() }, { limit: COUNT_CAP })
 	])
 
-	const hasMore = rows.length > limit
-	if (hasMore) rows.pop()
+	const hasMore = docs.length > limit
+	if (hasMore) docs.pop()
 
 	return {
-		nodes: rows,
+		nodes: docs,
 		total,
 		// Never exact here, and not because of the cap: this count sees `item.published` and cannot
 		// see `company.published`, so it counts items belonging to shops that have gone dark. An

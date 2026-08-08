@@ -7,15 +7,15 @@ import { ClientSession, Types } from 'mongoose'
  * no tombstone.
  *
  * ⚠️ **This overwrites the stored password without proving anything, and that is safe here only
- * because the row is not yet an account.** `loginUser` refuses every row whose `emailVerify.valid` is
+ * because the document is not yet an account.** `loginUser` refuses every document whose `emailVerify.valid` is
  * not true, so nothing can be done with these credentials until somebody opens the mail sent to that
  * address — which is the proof. What the write costs an attacker is nothing they did not already have;
  * what it buys the honest caller is the ability to recover from mistyping their password into a form
- * whose confirmation mail they then never received. Never call it on a row whose `valid` is true: there
+ * whose confirmation mail they then never received. Never call it on a document whose `valid` is true: there
  * it *would* be an unauthenticated password reset, and the reset flow exists for that.
  *
  * `$unset: { deleted: '' }` because the abandon guards soft-delete: five wrong hashes or a link older
- * than three days stamps `deleted` and leaves the row standing, holding its unique `login.email`
+ * than three days stamps `deleted` and leaves the document standing, holding its unique `login.email`
  * against a second registration. Without clearing it the address would be permanently unusable by the
  * person who chose it, which is not what a three-day timeout is supposed to mean.
  *

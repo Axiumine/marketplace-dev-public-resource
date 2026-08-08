@@ -13,7 +13,7 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  * category listing arrive with no shop context at all (an item called "Aurora" is unlinkable
  * without knowing whose it is), and the shop page has the context but for free: the resolver already
  * looked the company up to check it was published. A single node type across all three paths costs
- * the shop page two repeated strings per row and saves the client a second shape, a second fragment
+ * the shop page two repeated strings per item and saves the client a second shape, a second fragment
  * and a second cache entry for the same item.
  *
  * `companyPublicName` rides along because a result card renders "Aurora — North Loop Goods", and
@@ -22,7 +22,7 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  * shop is published, so it costs nothing that was not already being paid.
  *
  * `published` is absent, unlike on the ShopOwner tier's `GraphQLItem`. There, drafts and live items
- * come back together and the flag is what the row renders; here every path has already filtered
+ * come back together and the flag is what the listing renders; here every path has already filtered
  * `published: true` on the item **and** on its company, so the field could only ever answer `true` —
  * a constant dressed as data, and one that invites a client to filter on it and get the emptiness
  * wrong. `idCompany` is absent for the same reason `companySlug` is present: what a client does with

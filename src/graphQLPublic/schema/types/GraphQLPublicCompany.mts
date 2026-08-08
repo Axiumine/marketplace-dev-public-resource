@@ -20,7 +20,7 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  * But `20260804010000-alter-company-public` installed an `$expr` alongside the `$jsonSchema` making
  * `published: true` impossible without them, and every read path that reaches this type filters
  * `published: true`. So the nullability difference between the two tiers is not a disagreement — it
- * is the same collection seen through a filter that excludes exactly the rows where the fields are
+ * is the same collection seen through a filter that excludes exactly the documents where the fields are
  * missing. `description` stays nullable because the validator does not demand it: a shop may go live
  * with a name and no page body.
  */

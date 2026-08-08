@@ -77,7 +77,7 @@ describe('liveItemsAcrossShops', () => {
 		return itemAggregate.mock.calls[0][0] as PipelineStage[]
 	}
 
-	it('returns the aggregation’s rows untouched', async () => {
+	it('returns the aggregation’s docs untouched', async () => {
 		const hits = [{ _id: idCompany, name: 'Sneaker' }]
 		itemAggregate.mockResolvedValueOnce(hits)
 
@@ -103,8 +103,8 @@ describe('liveItemsAcrossShops', () => {
 	})
 
 	// ⚠️ The one bound on the work, and it is placed *before* the join deliberately: a category can
-	// span every shop on the platform, and joining company rows onto a hundred thousand items to
-	// return sixty is not a query, it is an outage. `OVERFETCH` absorbs the rows the join then drops —
+	// span every shop on the platform, and joining company documents onto a hundred thousand items to
+	// return sixty is not a query, it is an outage. `OVERFETCH` absorbs the documents the join then drops —
 	// a mitigation, never a fix, which is why these paths report `totalIsExact: false`.
 	it('bounds the pre-join window at (skip + limit) × OVERFETCH', async () => {
 		const pipeline = await runPipeline({ idCategory: idCompany }, {}, { _id: 1 }, 40, 20)

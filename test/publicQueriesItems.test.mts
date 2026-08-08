@@ -32,13 +32,13 @@ interface IChain {
 	lean: Mock
 }
 
-const chain = (rows: unknown): IChain => {
+const chain = (docs: unknown): IChain => {
 	const self = {} as IChain
 
 	self.sort = vi.fn(() => self)
 	self.skip = vi.fn(() => self)
 	self.limit = vi.fn(() => self)
-	self.lean = vi.fn(async () => rows)
+	self.lean = vi.fn(async () => docs)
 
 	return self
 }
@@ -113,11 +113,11 @@ describe('itemBySlug', () => {
 	// rule — an item is public only if its company is published too — without a join, and leaves
 	// `idCompany` in hand so the item lookup is a single seek on `idCompany_slug_unique`.
 	it('resolves the shop first, then seeks the item on the unique pair', async () => {
-		const row = item(1)
-		itemFindOne.mockReturnValueOnce(chain(row))
+		const doc = item(1)
+		itemFindOne.mockReturnValueOnce(chain(doc))
 
 		await expect(itemBySlug.resolve(null, { companySlug: 'mark-boutique', slug: 'item-1' })).resolves.toEqual({
-			...row,
+			...doc,
 			companySlug: 'mark-boutique',
 			companyPublicName: 'Mark Boutique'
 		})
@@ -178,8 +178,8 @@ describe('items', () => {
 	})
 
 	describe('the shop path — exact, because the shop is settled once', () => {
-		const resolveShop = async (args: Record<string, unknown> = {}, rows: unknown[] = [], total = 0) => {
-			const query = chain(rows)
+		const resolveShop = async (args: Record<string, unknown> = {}, docs: unknown[] = [], total = 0) => {
+			const query = chain(docs)
 			itemFind.mockReturnValueOnce(query)
 			itemCountDocuments.mockResolvedValueOnce(total)
 
@@ -189,7 +189,7 @@ describe('items', () => {
 		// Sorted by `name` here and by `_id` on the category path, and the split is a cost decision:
 		// neither sort is index-backed, but a shop's own catalogue is bounded by what one business sells,
 		// while the same blocking sort across a category spans every item on the platform.
-		it('pages one shop’s catalogue by name, one row past the window', async () => {
+		it('pages one shop’s catalogue by name, one document past the window', async () => {
 			const { page, query } = await resolveShop({ limit: 2 }, [item(1), item(2), item(3)], 7)
 
 			expect(itemFind).toHaveBeenCalledExactlyOnceWith({ idCompany, ...live }, '_id idCategory name description slug')
@@ -204,9 +204,9 @@ describe('items', () => {
 
 		// ⚠️ The overfetch is what makes `hasMore` exact, and the boundary is where it can be wrong in
 		// both directions: a full page is *not* evidence of a next one. `>=` here would report more, the
-		// page would lose its last row to the pop, and a caller paging on that flag would loop forever
+		// page would lose its last document to the pop, and a caller paging on that flag would loop forever
 		// over a catalogue whose size happens to be a multiple of its page size.
-		it('reports no next page when the window came back exactly full, keeping every row', async () => {
+		it('reports no next page when the window came back exactly full, keeping every document', async () => {
 			const { page } = await resolveShop({ limit: 2 }, [item(1), item(2)], 2)
 
 			expect(page.hasMore).toBe(false)
@@ -214,8 +214,8 @@ describe('items', () => {
 		})
 
 		// The shop is already resolved, so its two identity fields are attached here rather than re-read
-		// per row — which is what lets one node type serve all three item paths.
-		it('stamps the shop’s identity onto every row', async () => {
+		// per document — which is what lets one node type serve all three item paths.
+		it('stamps the shop’s identity onto every document', async () => {
 			const { page } = await resolveShop({}, [item(1)])
 
 			expect(page.nodes[0]).toMatchObject({ companySlug: 'mark-boutique', companyPublicName: 'Mark Boutique' })
@@ -274,9 +274,9 @@ describe('items', () => {
 			expect(liveCompanyBySlug).not.toHaveBeenCalled()
 		})
 
-		// Same boundary as the shop path, and it matters more here: the join drops rows, so a page that
+		// Same boundary as the shop path, and it matters more here: the join drops documents, so a page that
 		// comes back exactly full is the *common* case rather than the coincidence it is above.
-		it('reports no next page on an exactly full window, and keeps both rows', async () => {
+		it('reports no next page on an exactly full window, and keeps both documents', async () => {
 			liveItemsAcrossShops.mockResolvedValueOnce([item(1), item(2)])
 
 			const page = await items.resolve(null, { idCategory: idCategory.toHexString(), limit: 2 })
@@ -298,7 +298,7 @@ describe('items', () => {
 			expect(page.totalIsExact).toBe(false)
 		})
 
-		// A much lower offset cap than the exact path's, and named in the message: every skipped row here
+		// A much lower offset cap than the exact path's, and named in the message: every skipped document here
 		// is multiplied by OVERFETCH and then fed through a join.
 		it('caps paging depth at the cross-shop limit, not the general one', async () => {
 			await expect(items.resolve(null, { idCategory: idCategory.toHexString(), offset: 2_001 })).rejects.toThrow(
@@ -311,8 +311,8 @@ describe('items', () => {
 })
 
 describe('search', () => {
-	const resolveSearch = async (args: Record<string, unknown> = {}, rows: unknown[] = []) => {
-		const query = chain(rows)
+	const resolveSearch = async (args: Record<string, unknown> = {}, docs: unknown[] = []) => {
+		const query = chain(docs)
 		companyFind.mockReturnValueOnce(query)
 
 		return { result: await search.resolve(null, { q: 'sneaker', ...args }), query }
@@ -434,9 +434,9 @@ describe('search', () => {
 })
 
 describe('sitemapEntries', () => {
-	const facet = (rows: unknown[], scanned?: number, maxId?: Types.ObjectId) => [
+	const facet = (docs: unknown[], scanned?: number, maxId?: Types.ObjectId) => [
 		{
-			rows,
+			docs,
 			scanned: scanned === undefined ? [] : [{ n: scanned }],
 			tail: maxId ? [{ maxId }] : []
 		}
@@ -479,10 +479,10 @@ describe('sitemapEntries', () => {
 		// entire collection by definition — the workload `MAX_OFFSET` refuses: at half a million shops the
 		// last page of a `skip` walk discards half a million index entries and the whole file costs O(n²).
 		// It is also more correct under concurrent writes: a shop created mid-walk gets a larger `_id` and
-		// lands on a later page, where an offset walk would shift every remaining page and drop a row.
+		// lands on a later page, where an offset walk would shift every remaining page and drop a document.
 		it('resumes from the cursor, trusted, and emits site-relative paths', async () => {
-			const rows = [{ _id: idCompany, slug: 'mark-boutique' }]
-			const query = chain(rows)
+			const docs = [{ _id: idCompany, slug: 'mark-boutique' }]
+			const query = chain(docs)
 			companyFind.mockReturnValueOnce(query)
 
 			const page = await sitemapEntries.resolve(null, { kind: 'COMPANY', afterId: idCompany.toHexString(), limit: 1 })
@@ -517,9 +517,9 @@ describe('sitemapEntries', () => {
 	})
 
 	describe('ITEM', () => {
-		// ⚠️ The only walk whose returned rows are fewer than its scanned rows, and `$facet` is what keeps
+		// ⚠️ The only walk whose returned documents are fewer than its scanned documents, and `$facet` is what keeps
 		// the pagination exact through that filter: both branches see the same already-sorted,
-		// already-limited window, so `scanned` reports how many rows were consumed and `maxId` where the
+		// already-limited window, so `scanned` reports how many documents were consumed and `maxId` where the
 		// walk stopped — regardless of how many survived the join. Deriving the cursor from the survivors
 		// would stall the walk on any window whose items all belong to unpublished shops.
 		it('scans a window, joins the shop, and carries the cursor from the scan', async () => {
@@ -532,7 +532,7 @@ describe('sitemapEntries', () => {
 			expect(pipeline[0]).toEqual({ $match: LIVE_PLAIN })
 			expect(pipeline[1]).toEqual({ $sort: { _id: 1 } })
 			expect(pipeline[2]).toEqual({ $limit: 2 })
-			expect(pipeline[3].$facet.rows[0].$lookup).toMatchObject({
+			expect(pipeline[3].$facet.docs[0].$lookup).toMatchObject({
 				from: 'company',
 				localField: 'idCompany',
 				foreignField: '_id',
@@ -540,11 +540,11 @@ describe('sitemapEntries', () => {
 				pipeline: [{ $match: LIVE_PLAIN }, { $project: { slug: 1 } }]
 			})
 			// No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
-			expect(pipeline[3].$facet.rows[1]).toEqual({ $unwind: '$company' })
+			expect(pipeline[3].$facet.docs[1]).toEqual({ $unwind: '$company' })
 			// `_id: 0` because the cursor comes from the `tail` branch and a projected `_id` would only
 			// travel back over the wire; `companySlug` is lifted out of the joined document because the
 			// path needs both slugs and nothing downstream should have to know a `$lookup` happened.
-			expect(pipeline[3].$facet.rows[2]).toEqual({ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } })
+			expect(pipeline[3].$facet.docs[2]).toEqual({ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } })
 			expect(pipeline[3].$facet.scanned).toEqual([{ $count: 'n' }])
 			expect(pipeline[3].$facet.tail).toEqual([{ $group: { _id: null, maxId: { $max: '$_id' } } }])
 			expect(page.nodes).toEqual([{ path: '/shop/mark-boutique/item/sneaker' }])
@@ -566,9 +566,9 @@ describe('sitemapEntries', () => {
 			expect(Object.getOwnPropertySymbols(match.deleted)).toHaveLength(0)
 		})
 
-		// ⚠️ Do not stop on a short page: this walk returns fewer rows than it scanned whenever an item's
+		// ⚠️ Do not stop on a short page: this walk returns fewer documents than it scanned whenever an item's
 		// shop is unpublished, so a short page is normal and says nothing about being finished.
-		it('keeps walking when the join dropped rows but the window was full', async () => {
+		it('keeps walking when the join dropped documents but the window was full', async () => {
 			const maxId = new Types.ObjectId()
 			itemAggregate.mockResolvedValueOnce(facet([], 3, maxId))
 
@@ -617,7 +617,7 @@ describe('sitemapEntries', () => {
 			expect(itemCategoryFind.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
 			expect(itemCategoryFind.mock.calls[0][1]).toBe('_id slug idParent')
 			// Sorted by `_id` because the cursor IS the `_id`: without this sort the walk resumes from
-			// whatever row happened to come last, and rows below it are never emitted.
+			// whatever document happened to come last, and documents below it are never emitted.
 			expect(query.sort).toHaveBeenCalledExactlyOnceWith({ _id: 1 })
 		})
 
@@ -640,7 +640,7 @@ describe('sitemapEntries', () => {
 		// ⚠️ A subcategory whose parent has been soft-deleted is dropped rather than emitted under a dead
 		// segment: its URL cannot be built without a parent slug, and `/category/undefined/x` in a sitemap
 		// is worse than nothing. The page is then short, which is why the cursor comes from the scanned
-		// rows here too.
+		// documents here too.
 		it('drops an orphan rather than writing an undefined segment, and still advances', async () => {
 			itemCategoryFind
 				.mockReturnValueOnce(

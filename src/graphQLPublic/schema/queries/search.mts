@@ -48,7 +48,7 @@ const MAX_QUERY_LENGTH = 120
  * An item has no coordinates; it inherits its shop's. So "items near me" is an item text match whose
  * *company* falls inside the circle, and the filter travels into the `$lookup` sub-pipeline where
  * that company is already being fetched and checked. ⚠️ It therefore raises the share of fetched
- * rows the join discards — see `liveItemsAcrossShops` for what `OVERFETCH` does and does not cover:
+ * documents the join discards — see `liveItemsAcrossShops` for what `OVERFETCH` does and does not cover:
  * a tight radius shortens item pages before it empties them.
  *
  * ## trusted()

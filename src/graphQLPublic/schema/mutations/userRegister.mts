@@ -42,7 +42,7 @@ export interface IUserRegisterArgs {
  * not being that frontend. Checking it server-side is what makes "the customer confirmed their
  * password" true rather than merely rendered.
  *
- * The whole thing runs in one transaction so a mail is never sent for a row that failed to write.
+ * The whole thing runs in one transaction so a mail is never sent for a document that failed to write.
  * The reverse is still possible — the write commits and SocketLabs then refuses the mail — and is
  * recoverable by design: that is what `userVerifyEmailResend` is for.
  */
@@ -83,7 +83,7 @@ export const userRegister = {
 					return
 				}
 
-				// A verified row is somebody's account. Nothing is written to it — not the password, not the
+				// A verified document is somebody's account. Nothing is written to it — not the password, not the
 				// hash — and the mail says so, which is the one message that helps its owner (they forgot
 				// they registered) without telling anyone else the address is taken.
 				if (existing.emailVerify?.valid) {

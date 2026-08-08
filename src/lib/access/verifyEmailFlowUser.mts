@@ -37,7 +37,7 @@ export const VERIFY_EMAIL_PATHS_USER: IVerifyEmailPaths = {
 /**
  * `'soft-delete'` for the same reason the ShopOwner flow uses it, arrived at from the other direction.
  *
- * A shop owner is soft-deleted because rows point at them. A customer is soft-deleted because the
+ * A shop owner is soft-deleted because documents point at them. A customer is soft-deleted because the
  * address does: `login.email` carries a unique index with no `partialFilterExpression`, so a hard
  * `deleteOne` on an abandoned registration frees that address for anyone to claim — including whoever
  * was typing it into the form by mistake. Keeping the tombstone keeps the address bound to the person
@@ -72,7 +72,7 @@ const flow = createVerifyEmailFlow({
 export const routerVerifyEmailUser: IVerifyEmailFlow['routerVerifyEmail'] = flow.routerVerifyEmail
 
 /**
- * Mints a fresh 50-character hash on an existing row, resetting `requestTimes` to 1 and `dateLastReq`
+ * Mints a fresh 50-character hash on an existing document, resetting `requestTimes` to 1 and `dateLastReq`
  * to now — which is what restarts the three-day window and clears the wrong-hash strike count.
  *
  * Exposed because `userVerifyEmailResend` needs it and because `userRegister` needs it for the

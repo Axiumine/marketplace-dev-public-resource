@@ -4,7 +4,7 @@ import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { ClientSession, Types } from 'mongoose'
 
 /**
- * Writes the minimal customer row and returns the activation hash the mail has to carry.
+ * Writes the minimal customer document and returns the activation hash the mail has to carry.
  *
  * Not koa-utils' `registerNewUser`: that one is welded to `UserBase` and writes its `account.email.*`
  * layout, which this collection's validator rejects outright (`additionalProperties: false`, and there

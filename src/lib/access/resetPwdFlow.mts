@@ -1,6 +1,6 @@
 import type { IResetPwdPaths } from '@axiumine/koa-utils/lib/access/accessPaths'
 import { createResetPwdFlow } from '@axiumine/koa-utils/lib/access/createResetPwdFlow'
-import { ShopOwner } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ShopOwner'
+import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 
 /**
  * Where the password-reset flow finds its fields on `shopOwner`.

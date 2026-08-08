@@ -1,4 +1,4 @@
-import { User } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/User'
+import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { ClientSession, Types } from 'mongoose'
 
 /** The three fields the registration paths branch on, and nothing else. */

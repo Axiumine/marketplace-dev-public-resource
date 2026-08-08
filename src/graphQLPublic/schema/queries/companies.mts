@@ -1,6 +1,6 @@
+import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
 import { assertOffset, clampLimit, COUNT_CAP, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicCompanyPage } from '@ptypes/GraphQLPublicCompanyPage.mjs'
-import { Company } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Company'
 import { GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql'
 
 interface IArgs {

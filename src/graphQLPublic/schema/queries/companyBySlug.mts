@@ -1,6 +1,6 @@
+import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
 import { livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicCompany } from '@ptypes/GraphQLPublicCompany.mjs'
-import { Company } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Company'
 import { GraphQLNonNull, GraphQLString } from 'graphql'
 
 import { PUBLIC_COMPANY_PROJECTION } from './companies.mjs'

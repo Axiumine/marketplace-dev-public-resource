@@ -11,11 +11,11 @@ const itemCategoryFind = vi.fn()
 const liveCompanyBySlug = vi.fn()
 const liveItemsAcrossShops = vi.fn(async () => [] as unknown[])
 
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/Company', () => ({ Company: { find: companyFind } }))
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/Item', () => ({
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({ Company: { find: companyFind } }))
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Item', () => ({
 	Item: { find: itemFind, findOne: itemFindOne, countDocuments: itemCountDocuments, aggregate: itemAggregate }
 }))
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/ItemCategory', () => ({
+vi.mock('@axiumine/marketplace-common/models/MongoDB/ItemCategory', () => ({
 	ItemCategory: { find: itemCategoryFind }
 }))
 vi.mock('../src/lib/catalogue/liveCompanyBySlug.mts', () => ({ liveCompanyBySlug }))

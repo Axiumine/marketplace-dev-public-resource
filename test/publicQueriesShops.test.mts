@@ -8,10 +8,10 @@ const companyCountDocuments = vi.fn(async () => 0)
 const companyAggregate = vi.fn(async () => [])
 const itemCategoryFind = vi.fn()
 
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/Company', () => ({
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({
 	Company: { find: companyFind, findOne: companyFindOne, countDocuments: companyCountDocuments, aggregate: companyAggregate }
 }))
-vi.mock('@thedoctorweb_agency/marketplace-common/models/MongoDB/ItemCategory', () => ({
+vi.mock('@axiumine/marketplace-common/models/MongoDB/ItemCategory', () => ({
 	ItemCategory: { find: itemCategoryFind }
 }))
 

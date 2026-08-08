@@ -1,8 +1,8 @@
+import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
+import { Item } from '@axiumine/marketplace-common/models/MongoDB/Item'
+import { ItemCategory } from '@axiumine/marketplace-common/models/MongoDB/ItemCategory'
 import { assertObjectId, LIVE_PUBLIC_PIPELINE, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLSitemapKind, GraphQLSitemapPage } from '@ptypes/GraphQLSitemapEntry.mjs'
-import { Company } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Company'
-import { Item } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Item'
-import { ItemCategory } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ItemCategory'
 import { GraphQLID, GraphQLInt, GraphQLNonNull } from 'graphql'
 import { trusted, Types } from 'mongoose'
 

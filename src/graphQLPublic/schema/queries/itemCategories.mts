@@ -1,5 +1,5 @@
+import { ItemCategory } from '@axiumine/marketplace-common/models/MongoDB/ItemCategory'
 import { GraphQLPublicItemCategory } from '@ptypes/GraphQLPublicItemCategory.mjs'
-import { ItemCategory } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/ItemCategory'
 import { GraphQLList, GraphQLNonNull } from 'graphql'
 import { trusted } from 'mongoose'
 

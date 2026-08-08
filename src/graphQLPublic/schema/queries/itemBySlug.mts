@@ -1,7 +1,7 @@
+import { Item } from '@axiumine/marketplace-common/models/MongoDB/Item'
 import { liveCompanyBySlug } from '@lib/catalogue/liveCompanyBySlug.mjs'
 import { livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicItemHit } from '@ptypes/GraphQLPublicItemHit.mjs'
-import { Item } from '@thedoctorweb_agency/marketplace-common/models/MongoDB/Item'
 import { GraphQLNonNull, GraphQLString } from 'graphql'
 import { Types } from 'mongoose'
 

@@ -18,19 +18,13 @@ import { nodeNextResolver } from './vitest.shared.mts'
 // `.mjs -> .mts` NodeNext rewrite and the single-graphql-realm pinning are load
 // bearing, not preferences.
 // ⚠️ Five entries, and the fifth is not optional — this list has to be the SAME list as the one in
-// vitest.config.mts. `@thedoctorweb_agency/marketplace-common` was missing here, which put it on the
+// vitest.config.mts. `@axiumine/marketplace-common` was missing here, which put it on the
 // externalised side while koa-utils sat on the inlined one: two graphql copies in one schema, so the
 // real ApolloServer's validation threw `Cannot use GraphQLNonNull "String!" from another module or
 // realm` and koa-utils' `instanceof GraphQLError` narrowing quietly stopped matching. Under Stryker
 // that surfaces as a failed *initial* run, which aborts the whole gate before a single mutant is
 // tested — the mutation score was never 100 here, there was no score at all.
-const inlineDeps = [
-	/graphql/,
-	/@apollo\/server/,
-	/@as-integrations/,
-	/@axiumine\/koa-utils/,
-	/@thedoctorweb_agency\/marketplace-common/
-]
+const inlineDeps = [/graphql/, /@apollo\/server/, /@as-integrations/, /@axiumine\/koa-utils/, /@axiumine\/marketplace-common/]
 
 export default defineConfig({
 	plugins: [nodeNextResolver],

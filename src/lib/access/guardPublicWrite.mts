@@ -1,6 +1,6 @@
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
-import { assertTurnstile } from '@thedoctorweb_agency/marketplace-common/others/assertTurnstile'
-import { assertUnderRateLimit } from '@thedoctorweb_agency/marketplace-common/others/assertUnderRateLimit'
+import { assertTurnstile } from '@axiumine/marketplace-common/others/assertTurnstile'
+import { assertUnderRateLimit } from '@axiumine/marketplace-common/others/assertUnderRateLimit'
 import { Context } from 'koa'
 
 /** One hour, in seconds — the window every public write on this service is metered over. */

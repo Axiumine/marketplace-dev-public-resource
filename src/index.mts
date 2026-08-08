@@ -4,6 +4,7 @@ import { koaMiddleware as apolloServerKoa } from '@as-integrations/koa'
 import { MongoDBConnect } from '@axiumine/koa-utils/dataSources/MongoDB'
 import { RedisConnect } from '@axiumine/koa-utils/dataSources/Redis'
 import { tdwKoaErrorHandler } from '@axiumine/koa-utils/koa/tdwKoaErrorHandler'
+import { setupFieldEncryption } from '@axiumine/marketplace-common/encryption/setupFieldEncryption'
 import { disconnectAllDatabases } from '@lib/db/disconnectAllDatabases.mjs'
 import * as Sentry from '@sentry/node'
 import { GraphQLSchema, NoSchemaIntrospectionCustomRule, ValidationRule } from 'graphql'
@@ -34,7 +35,14 @@ export const REQUIRED_ENV_VARS = [
 	'REDIS_USERNAME',
 	'REDIS_PASSWORD',
 	'REDIS_KEY',
-	'MONGODB_URI'
+	'MONGODB_URI',
+	// The two halves of the field-encryption setup: where the 96-byte master key lives, and which
+	// namespace holds the data encryption keys it wraps. ADR-029. Both are read by
+	// setupFieldEncryption() below, and both belong in this list rather than being defaulted — a
+	// service that booted without them would read every personal field as raw `binData` and write
+	// plaintext beside the ciphertext already there.
+	'CSFLE_MASTER_KEY_PATH',
+	'CSFLE_KEY_VAULT_NAMESPACE'
 ]
 
 /**
@@ -178,6 +186,17 @@ export async function start() {
 		 * DB
 		 */
 		await Promise.all([MongoDBConnect(), RedisConnect()])
+
+		/****************
+		 * Field encryption (ADR-029)
+		 *
+		 * After MongoDBConnect() and before anything can query: it reuses the connection mongoose has
+		 * just opened, and the models refuse to read or write a personal field until it has run. It
+		 * throws rather than warning if the master key is missing — a service that started without it
+		 * would write plaintext into collections whose other documents are ciphertext, and nothing
+		 * would show that up until someone read the data back.
+		 */
+		await setupFieldEncryption()
 
 		const { httpServer, apolloServer } = await createServer()
 

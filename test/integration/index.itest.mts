@@ -4,6 +4,12 @@ import type { AddressInfo } from 'node:net'
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { createVerifyEmailFlow } from '@axiumine/koa-utils/lib/access/createVerifyEmailFlow'
 import type { IVerifyEmailMailer } from '@axiumine/koa-utils/lib/access/verifyEmailMailer'
+import { decryptDocument } from '@axiumine/marketplace-common/encryption/decryptDocument'
+import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
+import { ENCRYPTED_FIELDS_SHOP_OWNER, KEY_ALT_NAME_SHOP_OWNER } from '@axiumine/marketplace-common/encryption/encryptedFields'
+import { ALGORITHM_DETERMINISTIC } from '@axiumine/marketplace-common/encryption/EncryptionAlgorithm'
+import { encryptValue } from '@axiumine/marketplace-common/encryption/fieldEncryption'
+import { isCiphertext } from '@axiumine/marketplace-common/encryption/isCiphertext'
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import * as dotenv from 'dotenv'
 import type { Server } from 'http'
@@ -81,27 +87,57 @@ async function seedShopOwner(login: Record<string, unknown> = {}, extra: Record<
 	const email = itestEmail()
 	const _id = new mongoose.Types.ObjectId()
 
+	// ⚠️ Encrypted after both override bags are spread in, and before the insert (ADR-029): a caller
+	// overriding `login.email` or `emailVerify.newEmailTmp` gets its own value encrypted too, and the
+	// fields those two name are `binData` subtype 6 in the collection. A plaintext seed would be a
+	// document no resolver on the platform can produce, and the validator refuses it outright.
 	await db()
 		.collection('shopOwner')
-		.insertOne({
-			_id,
-			login: { email, password: FAKE_PASSWORD_HASH, ...login },
-			personalData: {
-				firstName: 'Itest',
-				lastName: 'PublicResource',
-				birth: { date: new Date('1985-06-15T00:00:00Z') },
-				address: { street: '2 Test Street', postalCode: '01103', city: 'Springfield', province: 'MA' },
-				contacts: { mobile: '3900000001', email }
-			},
-			registeredAt: new Date(),
-			...extra
-		})
+		.insertOne(
+			await encryptDocument(
+				{
+					_id,
+					login: { email, password: FAKE_PASSWORD_HASH, ...login },
+					personalData: {
+						firstName: 'Itest',
+						lastName: 'PublicResource',
+						birth: { date: new Date('1985-06-15T00:00:00Z') },
+						address: { street: '2 Test Street', postalCode: '01103', city: 'Springfield', province: 'MA' },
+						contacts: { mobile: '3900000001', email }
+					},
+					registeredAt: new Date(),
+					...extra
+				},
+				ENCRYPTED_FIELDS_SHOP_OWNER,
+				KEY_ALT_NAME_SHOP_OWNER
+			)
+		)
 	seededShopOwnerIds.push(_id)
 
 	return { _id, email }
 }
 
-function shopOwnerById(_id: mongoose.Types.ObjectId) {
+/**
+ * The raw driver read every assertion in this file goes through, decrypted on the way back.
+ *
+ * The read is deliberately still the raw driver rather than the Mongoose model — the point of the
+ * seeding convention above is that nothing in these tests is shaped by what the model believes — but
+ * a raw read now answers `binData` where a personal field used to be, so what comes back has to be
+ * put through the same key the write used. `decryptDocument` mutates in place and returns void: the
+ * document handed back is the one just read, with every ciphertext replaced by its plaintext.
+ *
+ * `shopOwnerByIdEncrypted` is the deliberate exception, for the one test that has to prove the
+ * ciphertext is really on disk.
+ */
+async function shopOwnerById(_id: mongoose.Types.ObjectId) {
+	const stored = await db().collection('shopOwner').findOne({ _id })
+
+	await decryptDocument(stored)
+
+	return stored
+}
+
+function shopOwnerByIdEncrypted(_id: mongoose.Types.ObjectId) {
 	return db().collection('shopOwner').findOne({ _id })
 }
 
@@ -576,6 +612,48 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 		const doc = await shopOwnerById(_id)
 		expect(doc?.emailVerify.valid).toBeUndefined()
 		expect(sent).toContainEqual(['accountDisabled', email])
+	})
+})
+
+/**
+ * The at-rest half of ADR-029, on the service that has to *find* an account by its email address.
+ *
+ * Both flows this file drives — reset-password and verify-email — look a shopOwner up by address,
+ * and the address in the collection is a ciphertext. The lookup works only because `login.email` is
+ * encrypted **deterministically**: the same address always produces the same bytes, so an equality
+ * match on the bytes is an equality match on the address. Everything else personal is random, which
+ * is why two shopOwners spelling `Springfield` are two different ciphertexts.
+ *
+ * That difference is the whole assertion. A field quietly switched from random to deterministic
+ * would still round-trip, still pass every other test in this file, and would still answer every
+ * query correctly — while handing anyone with read access to the collection an equality oracle over
+ * the personal data. Nothing but a same-value/different-ciphertext check notices.
+ */
+describe('personal fields at rest', () => {
+	it('stores login.email deterministically and every other personal field randomly', async () => {
+		const { _id, email } = await seedShopOwner()
+		const other = await seedShopOwner()
+
+		const stored = await shopOwnerByIdEncrypted(_id)
+		const storedOther = await shopOwnerByIdEncrypted(other._id)
+
+		// Nothing readable survives the write.
+		expect(isCiphertext(stored?.login.email)).toBe(true)
+		expect(isCiphertext(stored?.personalData.contacts.mobile)).toBe(true)
+		expect(isCiphertext(stored?.personalData.address.street)).toBe(true)
+		expect(isCiphertext(stored?.personalData.birth.date)).toBe(true)
+
+		// Deterministic: re-encrypting the plaintext address reproduces the stored bytes exactly,
+		// which is what makes `{ 'login.email': <ciphertext> }` a working filter for both flows.
+		expect(stored?.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_SHOP_OWNER))
+
+		// Random: two shopOwners seeded with the identical street are stored as different bytes.
+		expect(stored?.personalData.address.street).not.toEqual(storedOther?.personalData.address.street)
+
+		// NOT encrypted, deliberately: the password is already a hash and the city is a sort key on
+		// the shop-owner table in the admin frontend, which a ciphertext would order by its bytes.
+		expect(isCiphertext(stored?.login.password)).toBe(false)
+		expect(stored?.personalData.address.city).toBe('Springfield')
 	})
 })
 

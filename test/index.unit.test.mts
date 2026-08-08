@@ -6,6 +6,7 @@ const captureMessage = vi.fn()
 const MongoDBConnect = vi.fn()
 const RedisConnect = vi.fn()
 const disconnectAllDatabases = vi.fn()
+const setupFieldEncryption = vi.fn()
 // Captured constructor/factory arguments for the two real, unmocked config objects createServer()
 // builds (koa-bodyparser's options, ApolloServer's options). Both wrappers delegate to the real
 // implementation — body parsing and the Apollo instance still behave exactly as in production —
@@ -22,6 +23,10 @@ vi.mock('@sentry/node', () => ({ captureException, captureMessage }))
 vi.mock('@axiumine/koa-utils/dataSources/MongoDB', () => ({ MongoDBConnect }))
 vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ RedisConnect, redisClient: {} }))
 vi.mock('@lib/db/disconnectAllDatabases.mjs', () => ({ disconnectAllDatabases }))
+// Mocked, not stubbed with a real key: setupFieldEncryption() opens a ClientEncryption against the
+// live connection mongoose holds, and the unit project has none. What matters here is that start()
+// awaits it, in the right order, and dies if it rejects — all three are asserted below.
+vi.mock('@axiumine/marketplace-common/encryption/setupFieldEncryption', () => ({ setupFieldEncryption }))
 vi.mock('koa-bodyparser', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('koa-bodyparser')>()
 	return {
@@ -83,6 +88,13 @@ describe('checkRequiredEnv', () => {
 		delete env.MONGODB_URI
 
 		expect(() => checkRequiredEnv(env)).toThrow('Missing required environment variable: MONGODB_URI')
+	})
+
+	// Named literally rather than derived from the array: these two are what setupFieldEncryption()
+	// reads, and a rename on either side has to break a test rather than a boot. ADR-029.
+	it('requires the two field-encryption variables by name', () => {
+		expect(REQUIRED_ENV_VARS).toContain('CSFLE_MASTER_KEY_PATH')
+		expect(REQUIRED_ENV_VARS).toContain('CSFLE_KEY_VAULT_NAMESPACE')
 	})
 })
 
@@ -257,6 +269,7 @@ describe('start (failure path)', () => {
 		disconnectAllDatabases.mockReset()
 		MongoDBConnect.mockReset().mockResolvedValue(undefined)
 		RedisConnect.mockReset().mockResolvedValue(undefined)
+		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
 		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, 'x')
 		errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	})
@@ -289,6 +302,20 @@ describe('start (failure path)', () => {
 		expect(errorLog).toHaveBeenCalledExactlyOnceWith('error', error)
 	})
 
+	// A service that came up with field encryption broken would answer queries with ciphertext and
+	// write plaintext beside it, so this failure has to be as fatal as a datasource failure.
+	it('reports to Sentry and disconnects with code 1 when field encryption cannot start', async () => {
+		const error = new Error('CSFLE_MASTER_KEY_PATH is not set — field encryption cannot start without it')
+		setupFieldEncryption.mockRejectedValueOnce(error)
+
+		await start()
+
+		expect(setupFieldEncryption).toHaveBeenCalledTimes(1)
+		expect(captureException).toHaveBeenCalledWith(error)
+		expect(disconnectAllDatabases).toHaveBeenCalledWith(1)
+		expect(errorLog).toHaveBeenCalledExactlyOnceWith('error', error)
+	})
+
 	// checkRequiredEnv runs OUTSIDE the try, so a missing variable must propagate to the caller
 	// instead of being swallowed into a disconnect-and-exit.
 	it('throws out of start() — without touching the datasources — when a variable is missing', async () => {
@@ -309,6 +336,7 @@ describe('start (success path — the listen() call)', () => {
 	beforeEach(() => {
 		MongoDBConnect.mockReset().mockResolvedValue(undefined)
 		RedisConnect.mockReset().mockResolvedValue(undefined)
+		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
 		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, 'x')
 		vi.stubEnv('PORT', '4027')
 		infoLog = vi.spyOn(console, 'info').mockImplementation(() => undefined)
@@ -337,5 +365,14 @@ describe('start (success path — the listen() call)', () => {
 		srv = await start()
 
 		expect(listenSpy).toHaveBeenCalledExactlyOnceWith({ port: '4027' }, expect.any(Function))
+	})
+
+	// Once, with no arguments: it reads its configuration from the environment, and a caller that
+	// passed it anything would be building a second source of truth for the master key path.
+	it('sets field encryption up exactly once, before the server is built', async () => {
+		srv = await start()
+
+		expect(setupFieldEncryption).toHaveBeenCalledExactlyOnceWith()
+		expect(setupFieldEncryption.mock.invocationCallOrder[0]).toBeLessThan(listenSpy.mock.invocationCallOrder[0])
 	})
 })

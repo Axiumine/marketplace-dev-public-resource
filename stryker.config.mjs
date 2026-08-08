@@ -49,25 +49,31 @@ export default {
 		'src/**/*.mts',
 		// index.mts is NOT blanket-excluded. Verified with `vitest run --project unit --coverage`:
 		// the file reaches 83.01% statements / 69.23% branches from the unit project alone, with
-		// only lines 124-137 reported uncovered — the ENDPOINT/health/fallthrough dispatch inside
+		// only lines 132-145 reported uncovered — the ENDPOINT/health/fallthrough dispatch inside
 		// the app.use() middleware body in createServer, which only runs when a real HTTP request
 		// travels through the Koa stack, and only test/integration/index.itest.mts does that (this
 		// run deliberately stays on the unit project only, see vitest.mutation.config.mts). Every
-		// other line, INCLUDING the listen() call and the bind-fix options object at 180-198, is
+		// other line, INCLUDING the listen() call and the bind-fix options object at 188-217, is
 		// unit-covered and gets mutated below.
 		//
-		// A bare `!src/index.mts:124-137` does NOT narrow anything here — verified empirically
+		// A bare `!src/index.mts:132-145` does NOT narrow anything here — verified empirically
 		// against @stryker-mutator/core@9.6.1's project-reader.js: the negated-pattern branch of
 		// resolveFileDescriptions() sets `{ mutate: false }` unconditionally for every file the
 		// glob part matches, discarding whatever range was parsed from the pattern. So a negated
 		// range silently behaves exactly like `!src/index.mts` — the whole file, same silent trap
 		// as an unenforced git hook. What actually narrows is excluding the whole file and then
 		// re-including it as the UNION of two positive ranges, which Stryker's project reader does
-		// merge (see unionFileDescriptions). That leaves lines 124-137 unmutated, along with
-		// 207-225 — the `v8 ignore`d entrypoint tail below, which never executes under
+		// merge (see unionFileDescriptions). That leaves lines 132-145 unmutated, along with
+		// 226-244 — the `v8 ignore`d entrypoint tail below, which never executes under
 		// NODE_ENV=test regardless of project, so mutating it would only add NoCoverage noise.
 		'!src/index.mts',
-		'src/index.mts:1-123',
-		'src/index.mts:138-206'
+		// ⚠️ These are LINE NUMBERS, and they do not move when the file does. Anything added above
+		// createServer() slides its uncovered middleware body into a range marked "in scope", and the
+		// mutants that land there have no unit test to kill them — the run drops off 100 with
+		// survivors nobody introduced. That is exactly what ADR-029's `await setupFieldEncryption()`
+		// did on the sibling services. Re-derive both boundaries whenever src/index.mts changes
+		// length.
+		'src/index.mts:1-131',
+		'src/index.mts:146-225'
 	]
 }

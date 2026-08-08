@@ -74,13 +74,13 @@ describe('queries.publicHelloArgs', () => {
 	it('interpolates the name into the greeting', () => {
 		const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
 
-		expect(publicHelloArgs.resolve(null, { name: 'Mario' })).toEqual({
-			txt: 'Hello from publicHelloArgs - Mario!'
+		expect(publicHelloArgs.resolve(null, { name: 'Mark' })).toEqual({
+			txt: 'Hello from publicHelloArgs - Mark!'
 		})
 
 		// Pins the exact debug-log message: a passing `toHaveBeenCalled()` here would survive a
 		// mutant that blanks the literal to '' (or drops it and the args.name argument entirely).
-		expect(debug).toHaveBeenCalledExactlyOnceWith('publicHelloArgs: name: ', 'Mario')
+		expect(debug).toHaveBeenCalledExactlyOnceWith('publicHelloArgs: name: ', 'Mark')
 
 		debug.mockRestore()
 	})

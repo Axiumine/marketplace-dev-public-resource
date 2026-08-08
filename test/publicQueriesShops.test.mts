@@ -147,10 +147,10 @@ describe('companies', () => {
 	// can serve; a `$regex` on the same field cannot use the index and turns the second-most-requested
 	// route into a collection scan.
 	it('narrows on an exact city, in the same filter the count uses', async () => {
-		await resolve({ city: 'Milano' })
+		await resolve({ city: 'Boston' })
 
-		expect(companyFind.mock.calls[0][0]).toEqual({ ...live, 'address.city': 'Milano' })
-		expect(companyFind.mock.calls[0][0]['address.city']).toBe('Milano')
+		expect(companyFind.mock.calls[0][0]).toEqual({ ...live, 'address.city': 'Boston' })
+		expect(companyFind.mock.calls[0][0]['address.city']).toBe('Boston')
 		expect(companyCountDocuments.mock.calls[0][0]).toBe(companyFind.mock.calls[0][0])
 	})
 
@@ -168,7 +168,7 @@ describe('companies', () => {
 	// untagged `{ $exists: false }` is cast as a literal value against the path — a filter that matches
 	// nothing, silently, which reads to every caller as "the platform has no shops".
 	it('keeps the trusted tag on the liveness clause', async () => {
-		await resolve({ city: 'Milano' })
+		await resolve({ city: 'Boston' })
 
 		expect(companyFind.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
 	})

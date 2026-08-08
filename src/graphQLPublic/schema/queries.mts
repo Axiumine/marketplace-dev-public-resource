@@ -18,7 +18,7 @@ import { sitemapEntries } from './queries/sitemapEntries.mjs'
  * "public" means here — so every field below is reachable by anyone on the internet, unauthenticated,
  * at whatever rate they choose. Two consequences hold for anything added to this list. First, the
  * projection is the security boundary: `PUBLIC_COMPANY_PROJECTION` names five fields of a document
- * that also carries a partita IVA, and a new field on a public type is a publication decision, not a
+ * that also carries a VAT number, and a new field on a public type is a publication decision, not a
  * convenience. Second, every argument that can grow the server's work — `limit`, `offset`, `q`,
  * `radiusMeters`, the bbox size — is bounded in the resolver, because nothing upstream will bound it.
  *

@@ -83,13 +83,13 @@ describe('GET /check/', () => {
 
 describe('GET /check/verify-email/:email/:hash', () => {
 	it('reaches the mocked handler with the decoded params, including a URL-encoded email', async () => {
-		const ctx = makeCtx('GET', '/check/verify-email/mario%40test.it/abc123hash')
+		const ctx = makeCtx('GET', '/check/verify-email/mark%40test.it/abc123hash')
 
 		await router.routes()(ctx, noopNext)
 
 		expect(verifyEmailHandler).toHaveBeenCalledTimes(1)
 		expect(verifyEmailHandler.mock.calls[0][0].params).toEqual({
-			email: 'mario@test.it',
+			email: 'mark@test.it',
 			hash: 'abc123hash'
 		})
 	})

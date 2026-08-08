@@ -10,13 +10,13 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  *
  * **Why it always carries its shop.** The item URL is `/shop/:companySlug/item/:slug`, so the shop's
  * slug is not decoration — it is half of every link on the page. Search results and the cross-shop
- * category listing arrive with no shop context at all (an item called "Margherita" is unlinkable
+ * category listing arrive with no shop context at all (an item called "Aurora" is unlinkable
  * without knowing whose it is), and the shop page has the context but for free: the resolver already
  * looked the company up to check it was published. A single node type across all three paths costs
  * the shop page two repeated strings per row and saves the client a second shape, a second fragment
  * and a second cache entry for the same item.
  *
- * `companyPublicName` rides along because a result card renders "Margherita — Pizzeria Roma", and
+ * `companyPublicName` rides along because a result card renders "Aurora — North Loop Goods", and
  * fetching the shop name per hit would be N+1 reads on the query that can least afford them. On the
  * cross-shop paths it comes out of the `$lookup` that already had to touch `company` to check the
  * shop is published, so it costs nothing that was not already being paid.
@@ -30,8 +30,8 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  *
  * ⚠️ **No `score`.** The text score orders `items` in a search result, and the order is the answer;
  * exposing the raw number invites a client to threshold on it, and MongoDB's `textScore` is not
- * comparable across queries — it depends on the terms searched, so 0.75 means one thing for "pizza"
- * and another for "pizza margherita napoletana".
+ * comparable across queries — it depends on the terms searched, so 0.75 means one thing for "lamp"
+ * and another for "brass table lamp".
  */
 export const GraphQLPublicItemHit = new GraphQLObjectType({
 	name: 'GraphQLPublicItemHit',

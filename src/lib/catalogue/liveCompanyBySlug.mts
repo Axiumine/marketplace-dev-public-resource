@@ -26,7 +26,7 @@ export interface ILiveCompanyRef {
  * nothing else does, and in particular none of `vatNumber`, `certifiedEmail`, `legalName`,
  * `registryExtract` or `taxCode` — the legal-entity half of this collection — can leave this service.
  * A public resolver that reads the whole document and lets the GraphQL type do the filtering is one
- * `...on` selection away from leaking a partita IVA.
+ * `...on` selection away from leaking a VAT number.
  *
  * `slug_unique` is a partial unique index on `{ slug: { $type: 'string' } }`, so this is a single
  * index seek; the two liveness predicates are applied on the fetched document, not scanned for.

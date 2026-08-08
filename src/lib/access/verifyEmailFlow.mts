@@ -44,7 +44,7 @@ export const VERIFY_EMAIL_PATHS: IVerifyEmailPaths = {
  * and `handleIfMoreThan3DaysPassed` (a link older than three days).
  *
  * Through koa-utils 5.6.1 disposal was a hard `deleteOne` and there was no way to override it. On
- * `shopOwner` that removed the row while its `puntoVendita` → `categoria` → 13 food collections kept
+ * `shopOwner` that removed the row while its `company` → `item` → `itemCategory` chain kept
  * pointing at an `idShopOwner` that no longer resolved — Mongo has no foreign keys, so nothing
  * stopped it and nothing cleaned up after it. 5.7.0 added `onAbandon`, and `'soft-delete'` is the only
  * defensible mode here: it writes the same `deleted` tombstone every other path on this platform uses

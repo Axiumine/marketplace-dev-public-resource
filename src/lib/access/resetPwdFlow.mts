@@ -50,7 +50,7 @@ const flow = createResetPwdFlow({ model: ShopOwner, paths: RESET_PWD_PATHS })
 export const resetPwd = flow.resetPwd
 
 /**
- * Conferma del reset: cambia la password.
+ * Reset confirmation: changes the password.
  *
  * Exported as `updatePwd` because that is the field name the public schema has always exposed;
  * koa-utils calls the same mutation `updatePassword`.

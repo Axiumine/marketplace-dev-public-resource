@@ -50,7 +50,7 @@ const MILAN = { lng: 9.1919, lat: 45.4642 }
 
 const idCompany = new Types.ObjectId('507f1f77bcf86cd799439011')
 const idCategory = new Types.ObjectId('507f191e810c19729de860ea')
-const company = { _id: idCompany, slug: 'bakery-mario', publicName: 'Bakery Mario' }
+const company = { _id: idCompany, slug: 'mark-boutique', publicName: 'Mark Boutique' }
 
 const item = (n: number) => ({ _id: new Types.ObjectId(), idCategory, name: `Item ${n}`, description: 'x', slug: `item-${n}` })
 
@@ -99,7 +99,7 @@ describe('GraphQLSitemapKind', () => {
 
 describe('itemBySlug', () => {
 	// Two arguments and not one, because `item.slug` is unique **per company**: two shops may both sell a
-	// "margherita" without one of them having to call it "margherita-2". The pair is the identifier, and
+	// "blue-shirt" without one of them having to call it "blue-shirt-2". The pair is the identifier, and
 	// the URL spells it as the pair.
 	it('is nullable and identifies an item by the pair that is actually unique', () => {
 		expect(itemBySlug.description).toBe('Get one published item by its company slug and its own slug, or null')
@@ -116,13 +116,13 @@ describe('itemBySlug', () => {
 		const row = item(1)
 		itemFindOne.mockReturnValueOnce(chain(row))
 
-		await expect(itemBySlug.resolve(null, { companySlug: 'bakery-mario', slug: 'item-1' })).resolves.toEqual({
+		await expect(itemBySlug.resolve(null, { companySlug: 'mark-boutique', slug: 'item-1' })).resolves.toEqual({
 			...row,
-			companySlug: 'bakery-mario',
-			companyPublicName: 'Bakery Mario'
+			companySlug: 'mark-boutique',
+			companyPublicName: 'Mark Boutique'
 		})
 
-		expect(liveCompanyBySlug).toHaveBeenCalledExactlyOnceWith('bakery-mario')
+		expect(liveCompanyBySlug).toHaveBeenCalledExactlyOnceWith('mark-boutique')
 		expect(itemFindOne).toHaveBeenCalledExactlyOnceWith(
 			{ idCompany, slug: 'item-1', ...live },
 			'_id idCategory name description slug'
@@ -144,7 +144,7 @@ describe('itemBySlug', () => {
 	it('answers the same null for a live shop with no such live item', async () => {
 		itemFindOne.mockReturnValueOnce(chain(null))
 
-		await expect(itemBySlug.resolve(null, { companySlug: 'bakery-mario', slug: 'draft' })).resolves.toBeNull()
+		await expect(itemBySlug.resolve(null, { companySlug: 'mark-boutique', slug: 'draft' })).resolves.toBeNull()
 	})
 })
 
@@ -183,7 +183,7 @@ describe('items', () => {
 			itemFind.mockReturnValueOnce(query)
 			itemCountDocuments.mockResolvedValueOnce(total)
 
-			return { page: await items.resolve(null, { companySlug: 'bakery-mario', ...args }), query }
+			return { page: await items.resolve(null, { companySlug: 'mark-boutique', ...args }), query }
 		}
 
 		// Sorted by `name` here and by `_id` on the category path, and the split is a cost decision:
@@ -218,7 +218,7 @@ describe('items', () => {
 		it('stamps the shop’s identity onto every row', async () => {
 			const { page } = await resolveShop({}, [item(1)])
 
-			expect(page.nodes[0]).toMatchObject({ companySlug: 'bakery-mario', companyPublicName: 'Bakery Mario' })
+			expect(page.nodes[0]).toMatchObject({ companySlug: 'mark-boutique', companyPublicName: 'Mark Boutique' })
 		})
 
 		it('narrows by category when both selectors are given, staying on the exact path', async () => {
@@ -254,7 +254,7 @@ describe('items', () => {
 		})
 
 		it('honours the deep-paging cap of the exact path', async () => {
-			await expect(items.resolve(null, { companySlug: 'bakery-mario', offset: 10_001 })).rejects.toThrow(
+			await expect(items.resolve(null, { companySlug: 'mark-boutique', offset: 10_001 })).rejects.toThrow(
 				'offset must not exceed 10000'
 			)
 		})
@@ -315,7 +315,7 @@ describe('search', () => {
 		const query = chain(rows)
 		companyFind.mockReturnValueOnce(query)
 
-		return { result: await search.resolve(null, { q: 'focaccia', ...args }), query }
+		return { result: await search.resolve(null, { q: 'sneaker', ...args }), query }
 	}
 
 	it('answers a non-nullable result and takes a query, a point and a limit', () => {
@@ -346,10 +346,10 @@ describe('search', () => {
 	})
 
 	it('searches for the trimmed query, in both collections', async () => {
-		await resolveSearch({ q: '  focaccia  ' })
+		await resolveSearch({ q: '  sneaker  ' })
 
-		expect(companyFind.mock.calls[0][0].$text.$search).toBe('focaccia')
-		expect(liveItemsAcrossShops.mock.calls[0][0]).toEqual({ $text: { $search: 'focaccia' } })
+		expect(companyFind.mock.calls[0][0].$text.$search).toBe('sneaker')
+		expect(liveItemsAcrossShops.mock.calls[0][0]).toEqual({ $text: { $search: 'sneaker' } })
 	})
 
 	// ⚠️ `trusted()` on the `Query` filter, nothing in the pipeline. `sanitizeFilter` would rewrite both
@@ -368,7 +368,7 @@ describe('search', () => {
 	// have never been compared, and merging them produces an order that looks authoritative and is
 	// arbitrary. The score itself is sorted on and never projected: the order is the answer.
 	it('ranks each collection by its own relevance and returns them apart', async () => {
-		const shops = [{ _id: idCompany, publicName: 'Bakery Mario' }]
+		const shops = [{ _id: idCompany, publicName: 'Mark Boutique' }]
 		const hits = [item(1)]
 		liveItemsAcrossShops.mockResolvedValueOnce(hits)
 
@@ -425,7 +425,7 @@ describe('search', () => {
 	})
 
 	it('validates the point before it searches anything', async () => {
-		await expect(search.resolve(null, { q: 'focaccia', near: { lng: 999, lat: 0, radiusMeters: 1 } })).rejects.toThrow(
+		await expect(search.resolve(null, { q: 'sneaker', near: { lng: 999, lat: 0, radiusMeters: 1 } })).rejects.toThrow(
 			'near.lng must be a longitude between -180 and 180'
 		)
 
@@ -481,7 +481,7 @@ describe('sitemapEntries', () => {
 		// It is also more correct under concurrent writes: a shop created mid-walk gets a larger `_id` and
 		// lands on a later page, where an offset walk would shift every remaining page and drop a row.
 		it('resumes from the cursor, trusted, and emits site-relative paths', async () => {
-			const rows = [{ _id: idCompany, slug: 'bakery-mario' }]
+			const rows = [{ _id: idCompany, slug: 'mark-boutique' }]
 			const query = chain(rows)
 			companyFind.mockReturnValueOnce(query)
 
@@ -494,7 +494,7 @@ describe('sitemapEntries', () => {
 			expect(query.sort).toHaveBeenCalledExactlyOnceWith({ _id: 1 })
 			// Paths come back site-relative: this service does not know the customer domain, and a backend
 			// that guesses the origin writes a sitemap full of URLs pointing at the wrong environment.
-			expect(page.nodes).toEqual([{ path: '/shop/bakery-mario' }])
+			expect(page.nodes).toEqual([{ path: '/shop/mark-boutique' }])
 			expect(page.nextAfterId).toEqual(idCompany)
 		})
 
@@ -508,7 +508,7 @@ describe('sitemapEntries', () => {
 
 		// Nothing is dropped after the fetch on this walk, so a short page really does mean the end.
 		it('stops the walk on a short page', async () => {
-			companyFind.mockReturnValueOnce(chain([{ _id: idCompany, slug: 'bakery-mario' }]))
+			companyFind.mockReturnValueOnce(chain([{ _id: idCompany, slug: 'mark-boutique' }]))
 
 			const page = await sitemapEntries.resolve(null, { kind: 'COMPANY', limit: 2 })
 
@@ -524,7 +524,7 @@ describe('sitemapEntries', () => {
 		// would stall the walk on any window whose items all belong to unpublished shops.
 		it('scans a window, joins the shop, and carries the cursor from the scan', async () => {
 			const maxId = new Types.ObjectId()
-			itemAggregate.mockResolvedValueOnce(facet([{ slug: 'focaccia', companySlug: 'bakery-mario' }], 2, maxId))
+			itemAggregate.mockResolvedValueOnce(facet([{ slug: 'sneaker', companySlug: 'mark-boutique' }], 2, maxId))
 
 			const page = await sitemapEntries.resolve(null, { kind: 'ITEM', limit: 2 })
 			const pipeline = itemAggregate.mock.calls[0][0]
@@ -547,7 +547,7 @@ describe('sitemapEntries', () => {
 			expect(pipeline[3].$facet.rows[2]).toEqual({ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } })
 			expect(pipeline[3].$facet.scanned).toEqual([{ $count: 'n' }])
 			expect(pipeline[3].$facet.tail).toEqual([{ $group: { _id: null, maxId: { $max: '$_id' } } }])
-			expect(page.nodes).toEqual([{ path: '/shop/bakery-mario/item/focaccia' }])
+			expect(page.nodes).toEqual([{ path: '/shop/mark-boutique/item/sneaker' }])
 			expect(page.nextAfterId).toBe(maxId)
 		})
 
@@ -579,7 +579,7 @@ describe('sitemapEntries', () => {
 		})
 
 		it('stops when the scan itself came up short', async () => {
-			itemAggregate.mockResolvedValueOnce(facet([{ slug: 'focaccia', companySlug: 'bakery-mario' }], 1))
+			itemAggregate.mockResolvedValueOnce(facet([{ slug: 'sneaker', companySlug: 'mark-boutique' }], 1))
 
 			const page = await sitemapEntries.resolve(null, { kind: 'ITEM', limit: 3 })
 

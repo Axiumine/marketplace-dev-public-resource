@@ -90,7 +90,7 @@ async function seedShopOwner(login: Record<string, unknown> = {}, extra: Record<
 				firstName: 'Itest',
 				lastName: 'PublicResource',
 				birth: { date: new Date('1985-06-15T00:00:00Z') },
-				address: { street: 'Via Test 2', postalCode: '24031', city: 'Almenno San Salvatore', province: 'BG' },
+				address: { street: '2 Test Street', postalCode: '01103', city: 'Springfield', province: 'MA' },
 				contacts: { mobile: '3900000001', email }
 			},
 			registeredAt: new Date(),
@@ -187,10 +187,10 @@ describe('GraphQL over HTTP', () => {
 	})
 
 	it('serves the args mutation', async () => {
-		const { json } = await gql('mutation ($name: String!) { publicMutArgs(name: $name) }', { name: 'Mario' })
+		const { json } = await gql('mutation ($name: String!) { publicMutArgs(name: $name) }', { name: 'Mark' })
 
 		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ publicMutArgs: 'publicMutArgs Mario' })
+		expect(json.data).toEqual({ publicMutArgs: 'publicMutArgs Mark' })
 	})
 
 	// Introspection stays open outside production (buildValidationRules returns no rules), and the
@@ -517,8 +517,8 @@ describe('verify-email chain against real MongoDB, with a recording mailer', () 
 	})
 
 	// The reason the koa-utils change was asked for. Through 5.6.1 this branch was a hard `deleteOne`,
-	// and on `shopOwner` that removed the row while its puntoVendita → categoria → 13 food
-	// collections kept pointing at an idShopOwner that no longer resolved. The row surviving with a
+	// and on `shopOwner` that removed the row while its `company` → `item` → `itemCategory` chain
+	// kept pointing at an idShopOwner that no longer resolved. The row surviving with a
 	// tombstone is the assertion; that the tombstone is a Date the strict validator accepts is the
 	// other half, and it is why `deletedValue` cannot be koa-utils' boolean default.
 	it('soft-deletes on the fifth strike: the row survives, tombstoned with a Date', async () => {

@@ -86,7 +86,7 @@ describe('mutations.publicMutArgs', () => {
 	})
 
 	it('interpolates the name into the returned string', () => {
-		expect(publicMutArgs.resolve(null, { name: 'Mario' })).toBe('publicMutArgs Mario')
+		expect(publicMutArgs.resolve(null, { name: 'Mark' })).toBe('publicMutArgs Mark')
 	})
 })
 

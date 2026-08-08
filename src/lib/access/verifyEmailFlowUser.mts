@@ -42,7 +42,7 @@ export const VERIFY_EMAIL_PATHS_USER: IVerifyEmailPaths = {
  * `deleteOne` on an abandoned registration frees that address for anyone to claim — including whoever
  * was typing it into the form by mistake. Keeping the tombstone keeps the address bound to the person
  * who first proved they could receive mail at it, which is the same reasoning that leaves a retired
- * company holding its partita IVA.
+ * company holding its VAT number.
  *
  * `deletedValue` must be the function form: koa-utils defaults it to boolean `true`, and `user.deleted`
  * is `bsonType: 'date'` in the collection validator and `Date` on the model, so `true` is rejected by

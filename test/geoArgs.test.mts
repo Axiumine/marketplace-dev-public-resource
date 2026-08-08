@@ -30,7 +30,7 @@ describe('assertNearPoint', () => {
 	})
 
 	// The extremes are legal coordinates, not errors. A cap written with `<` where `<=` belongs turns
-	// the antimeridian and both poles into "not a longitude", which nothing on an Italy-only platform
+	// the antimeridian and both poles into "not a longitude", which nothing on a single-country platform
 	// would ever notice — until the first customer opens the map somewhere else.
 	it.each([
 		['the antimeridian', { lng: 180, lat: 0 }],
@@ -101,7 +101,7 @@ describe('bboxToPolygon', () => {
 
 	// ⚠️ A GeoJSON `Polygon` rather than the shorter `$box`, which is a legacy 2d operator: accepted
 	// against a 2dsphere index but interpreted with planar geometry, so its edges disagree with the
-	// index's spherical ones by kilometres at Italian latitudes.
+	// index's spherical ones by kilometres at mid latitudes.
 	//
 	// The ring is asserted position by position because its winding order *is* which side is "inside".
 	// A clockwise ring is not rejected by MongoDB — it is read as the complement, everywhere on Earth
@@ -142,7 +142,7 @@ describe('bboxToPolygon', () => {
 	})
 
 	// ⚠️ `minLng > maxLng` is how a map library says "the viewport wraps past ±180°". Answering it
-	// correctly means two polygons and a `$or`; nothing on an Italy-only platform can produce that
+	// correctly means two polygons and a `$or`; nothing on a single-country platform can produce that
 	// viewport, so it is refused with a message that says what happened. A naive polygon build would
 	// return the inverted rectangle instead — and it would appear to work.
 	it.each([

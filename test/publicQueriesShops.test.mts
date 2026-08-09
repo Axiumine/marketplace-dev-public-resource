@@ -1,6 +1,8 @@
 import { GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLString } from 'graphql'
-import { trusted, Types } from 'mongoose'
-import { beforeEach, describe, expect, it, Mock, vi } from 'vitest'
+import { Types } from 'mongoose'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { chain, expectTombstoneFilter, live, TRUSTED } from './support/queryChain.mts'
 
 const companyFind = vi.fn()
 const companyFindOne = vi.fn()
@@ -15,27 +17,6 @@ vi.mock('@axiumine/marketplace-common/models/MongoDB/ItemCategory', () => ({
 	ItemCategory: { find: itemCategoryFind }
 }))
 
-interface IChain {
-	sort: Mock
-	skip: Mock
-	limit: Mock
-	lean: Mock
-}
-
-/** A mongoose `Query`, mocked as the fluent object it is: every link returns itself, `lean` resolves. */
-const chain = (docs: unknown): IChain => {
-	const self = {} as IChain
-
-	self.sort = vi.fn(() => self)
-	self.skip = vi.fn(() => self)
-	self.limit = vi.fn(() => self)
-	self.lean = vi.fn(async () => docs)
-
-	return self
-}
-
-const TRUSTED = Object.getOwnPropertySymbols(trusted({}))[0]
-const live = { published: true, deleted: trusted({ $exists: false }) }
 const MILAN = { lng: 9.1919, lat: 45.4642 }
 
 const shop = (n: number) => ({ _id: new Types.ObjectId(), publicName: `Shop ${n}`, slug: `shop-${n}` })
@@ -412,11 +393,7 @@ describe('itemCategories', () => {
 
 		await expect(itemCategories.resolve()).resolves.toBe(docs)
 
-		expect(Object.keys(itemCategoryFind.mock.calls[0][0])).toEqual(['deleted'])
-		// The operator *and* its boolean, not just the key: `$exists: true` inverts the filter into
-		// "tombstones only" and `{}` drops it entirely, and both leave the key set untouched.
-		expect(itemCategoryFind.mock.calls[0][0].deleted.$exists).toBe(false)
-		expect(itemCategoryFind.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
+		expectTombstoneFilter(itemCategoryFind.mock.calls[0][0])
 		expect(itemCategoryFind.mock.calls[0][1]).toBe('_id idParent name slug position')
 	})
 

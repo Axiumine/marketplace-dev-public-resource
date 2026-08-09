@@ -1,6 +1,8 @@
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { expectFlowArguments, expectFreshDateFactory, expectSoftDeleteOnAbandon } from './support/verifyEmailFlowContract.mts'
+
 // Sentinel: the factory is koa-utils' and is tested there. What this file pins is what WE hand it,
 // and that the handler it returns is the one the router mounts.
 const boundRouterVerifyEmail = { __sentinel: 'routerVerifyEmail' }
@@ -38,41 +40,28 @@ describe('verifyEmailFlow', () => {
 		expect(createVerifyEmailFlow.mock.calls[0][0].model).toBe(ShopOwner)
 	})
 
-	// The whole argument object, key set included. Two things ride on this. A mutant that drops
-	// `onAbandon` does not fail any per-key assertion — koa-utils defaults it to 'delete', which is
-	// precisely the behaviour this binding exists to avoid — and the integration suite builds its own
-	// flow from these same values plus a recording mailer, an argument that only holds while nothing
-	// else is being passed here.
+	// The shared argument contract — see `support/verifyEmailFlowContract.mts`. What this suite adds to
+	// it: the integration suite builds its own flow from these same values plus a recording mailer, an
+	// argument that only holds while nothing else is being passed here.
 	it('passes exactly model, paths, onAbandon and deletedValue', () => {
-		expect(Object.keys(createVerifyEmailFlow.mock.calls[0][0])).toEqual(['model', 'paths', 'onAbandon', 'deletedValue'])
+		expectFlowArguments(createVerifyEmailFlow.mock.calls[0][0])
 	})
 
 	// Disposal policy. koa-utils 5.6.1 had no such option: both abandon guards hard-deleted, and on
 	// `shopOwner` that dropped the document while its `company` → `item` → `itemCategory` chain went
 	// on pointing at an idShopOwner nothing resolved any more.
 	it('soft-deletes an abandoned registration instead of dropping the document', () => {
-		expect(createVerifyEmailFlow.mock.calls[0][0].onAbandon).toBe('soft-delete')
+		expectSoftDeleteOnAbandon(createVerifyEmailFlow.mock.calls[0][0])
 	})
 
 	// koa-utils defaults `deletedValue` to boolean `true`, right for its own UserBase and wrong here
 	// twice: `deleted` is a Date on the model AND `bsonType: 'date'` in the collection validator, so
 	// the default is rejected by both. The schema assertion is what makes that concrete rather than a
-	// claim in a comment.
+	// claim in a comment, and it is the half the shared helper cannot make — it holds one model, this
+	// suite holds the other.
 	it('tombstones with a fresh Date, which is what the shopOwner schema declares', () => {
-		const { deletedValue } = createVerifyEmailFlow.mock.calls[0][0]
-
-		expect(typeof deletedValue).toBe('function')
+		expectFreshDateFactory(createVerifyEmailFlow.mock.calls[0][0].deletedValue)
 		expect(ShopOwner.schema.path('deleted').instance).toBe('Date')
-
-		// Called per disposal, not captured once: the function form is the only reason the tombstone
-		// carries the moment of the write rather than the moment this module was first imported.
-		const first = deletedValue()
-		const second = deletedValue()
-
-		expect(first).toBeInstanceOf(Date)
-		expect(second).toBeInstanceOf(Date)
-		expect(second).not.toBe(first)
-		expect(second.getTime()).toBeGreaterThanOrEqual(first.getTime())
 	})
 
 	// The route existed for years and never once reached a real account: koa-utils' own export is

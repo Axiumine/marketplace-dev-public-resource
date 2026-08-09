@@ -1,6 +1,8 @@
 import { GraphQLID, GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql'
-import { trusted, Types } from 'mongoose'
-import { beforeEach, describe, expect, it, Mock, vi } from 'vitest'
+import { Types } from 'mongoose'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { chain, expectTombstoneFilter, live, TRUSTED } from './support/queryChain.mts'
 
 const companyFind = vi.fn()
 const itemFind = vi.fn()
@@ -25,26 +27,6 @@ vi.mock('../src/lib/catalogue/liveItemsAcrossShops.mts', () => ({
 	OVERFETCH: 3
 }))
 
-interface IChain {
-	sort: Mock
-	skip: Mock
-	limit: Mock
-	lean: Mock
-}
-
-const chain = (docs: unknown): IChain => {
-	const self = {} as IChain
-
-	self.sort = vi.fn(() => self)
-	self.skip = vi.fn(() => self)
-	self.limit = vi.fn(() => self)
-	self.lean = vi.fn(async () => docs)
-
-	return self
-}
-
-const TRUSTED = Object.getOwnPropertySymbols(trusted({}))[0]
-const live = { published: true, deleted: trusted({ $exists: false }) }
 const LIVE_PLAIN = { published: true, deleted: { $exists: false } }
 const MILAN = { lng: 9.1919, lat: 45.4642 }
 
@@ -610,11 +592,7 @@ describe('sitemapEntries', () => {
 			expect(page.nodes).toEqual([{ path: '/category/bread' }])
 			expect(page.nextAfterId).toEqual(idCategory)
 			expect(itemCategoryFind).toHaveBeenCalledOnce()
-			expect(Object.keys(itemCategoryFind.mock.calls[0][0])).toEqual(['deleted'])
-			// The operator and its boolean, not just the key — `$exists: true` would walk the tombstones
-			// and publish a sitemap made entirely of deleted categories.
-			expect(itemCategoryFind.mock.calls[0][0].deleted.$exists).toBe(false)
-			expect(itemCategoryFind.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
+			expectTombstoneFilter(itemCategoryFind.mock.calls[0][0])
 			expect(itemCategoryFind.mock.calls[0][1]).toBe('_id slug idParent')
 			// Sorted by `_id` because the cursor IS the `_id`: without this sort the walk resumes from
 			// whatever document happened to come last, and documents below it are never emitted.

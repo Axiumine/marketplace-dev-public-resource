@@ -1,6 +1,8 @@
 import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { expectFlowArguments, expectFreshDateFactory, expectSoftDeleteOnAbandon } from './support/verifyEmailFlowContract.mts'
+
 // Sentinels: both factories are koa-utils' and are tested there. What this file pins is what WE hand
 // them — which model, which paths, which disposal policy, which mail domain — and that what comes
 // back reaches the schema under the right names.
@@ -75,11 +77,9 @@ describe('verifyEmailFlowUser', () => {
 		expect(User.collection.name).toBe('user')
 	})
 
-	// The key set as well as the values: a mutant that drops `onAbandon` fails no per-key assertion,
-	// because koa-utils then defaults it to `'delete'` — precisely the behaviour this binding exists
-	// to avoid.
+	// The shared argument contract — see `support/verifyEmailFlowContract.mts`.
 	it('passes exactly model, paths, onAbandon and deletedValue', () => {
-		expect(Object.keys(createVerifyEmailFlow.mock.calls[0][0])).toEqual(['model', 'paths', 'onAbandon', 'deletedValue'])
+		expectFlowArguments(createVerifyEmailFlow.mock.calls[0][0])
 	})
 
 	// ⚠️ Soft-delete, arrived at from the other direction than the shop owner's: `login.email` carries
@@ -87,26 +87,15 @@ describe('verifyEmailFlowUser', () => {
 	// frees that address for anyone to claim — including whoever was mistyping it into the form. The
 	// tombstone keeps the address bound to the person who first proved they could receive mail there.
 	it('soft-deletes an abandoned registration instead of dropping the document', () => {
-		expect(createVerifyEmailFlow.mock.calls[0][0].onAbandon).toBe('soft-delete')
+		expectSoftDeleteOnAbandon(createVerifyEmailFlow.mock.calls[0][0])
 	})
 
 	// koa-utils defaults `deletedValue` to boolean `true`, which `user.deleted` rejects twice over —
-	// `bsonType: 'date'` in the validator and `Date` on the model. The function form also stamps the
-	// moment of the write rather than the moment this module was imported, which is why it is called
-	// twice here rather than captured once.
+	// `bsonType: 'date'` in the validator and `Date` on the model. The schema half is asserted here
+	// rather than in the shared helper: the helper holds no model, and this is the customer's.
 	it('tombstones with a fresh Date, which is what the user schema declares', () => {
-		const { deletedValue } = createVerifyEmailFlow.mock.calls[0][0]
-
-		expect(typeof deletedValue).toBe('function')
+		expectFreshDateFactory(createVerifyEmailFlow.mock.calls[0][0].deletedValue)
 		expect(User.schema.path('deleted').instance).toBe('Date')
-
-		const first = deletedValue()
-		const second = deletedValue()
-
-		expect(first).toBeInstanceOf(Date)
-		expect(second).toBeInstanceOf(Date)
-		expect(second).not.toBe(first)
-		expect(second.getTime()).toBeGreaterThanOrEqual(first.getTime())
 	})
 
 	// Whole-object assertion plus an explicit key count: a per-key check cannot fail against `{}`

@@ -40,15 +40,15 @@ is looked up in a different collection each time, and a single route would have 
 caller that could lie.
 
 ⚠️ These routes are also why GitNexus's contract extraction finds three providers here and links none of
-them: its consumers are each frontend's external geocoder call. See parent `docs/gitnexus.md`.
+them: its consumers are each frontend's external geocoder call. See parent [`docs/gitnexus.md`](https://github.com/Axiumine/fullstack-marketplace-blueprint/blob/main/docs/gitnexus.md).
 
 ## Related files
 
 | Topic | File |
 |---|---|
-| rules for agents working in this repo | `CLAUDE.md` |
-| git hooks, gate order, node selection | `REPO.md` |
-| the whole platform — tiers, ports, terminology | parent `CLAUDE.md` |
+| rules for agents working in this repo | [`CLAUDE.md`](./CLAUDE.md) |
+| git hooks, gate order, node selection | [`REPO.md`](./REPO.md) |
+| the whole platform — tiers, ports, terminology | parent [`CLAUDE.md`](./CLAUDE.md) |
 
 ## License
 

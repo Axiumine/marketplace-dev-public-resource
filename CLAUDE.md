@@ -2,7 +2,7 @@
 
 Backend svc 1 of 9. Public tier, resource concern. Port 4027.
 
-**Read parent first** — `/media/nvme/websites/fullstack-marketplace-blueprint/CLAUDE.md`
+**Read parent first** — `../../../CLAUDE.md`
 (<https://github.com/Axiumine/fullstack-marketplace-blueprint> if you are reading this on GitHub).
 Tier/concern split, port table, terminology, auth model live there. Not here.
 

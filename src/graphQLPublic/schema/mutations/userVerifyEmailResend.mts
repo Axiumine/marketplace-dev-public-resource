@@ -5,11 +5,7 @@ import { sendUserVerifyEmail } from '@lib/access/sendUserVerifyEmail.mjs'
 import { setEmailHashUser } from '@lib/access/verifyEmailFlowUser.mjs'
 import { userForRegistration } from '@lib/db/userForRegistration.mjs'
 import { GraphQLBoolean, GraphQLError, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Context } from 'koa'
 import mongoose from 'mongoose'
-
-/** Deliberately tighter than registration's: this path sends a mail and writes nothing else. */
-const PER_IP_PER_HOUR = 5
 
 /** Same ceiling as registration, and the two buckets are separate — one cannot be used to top up the other. */
 const PER_EMAIL_PER_HOUR = 3
@@ -49,17 +45,16 @@ export const userVerifyEmailResend = {
 		email: { type: new GraphQLNonNull(GraphQLString) },
 		turnstileToken: { type: GraphQLString }
 	},
-	async resolve(_: unknown, args: IUserVerifyEmailResendArgs, ctx: Context) {
+	async resolve(_: unknown, args: IUserVerifyEmailResendArgs) {
 		const { email, turnstileToken } = args
 
 		const uEmail = email.toLowerCase().trim()
 		checkEmailLen(uEmail)
 
-		await guardPublicWrite(ctx, {
+		await guardPublicWrite({
 			bucket: 'userVerifyEmailResend',
 			email: uEmail,
 			turnstileToken,
-			perIpPerHour: PER_IP_PER_HOUR,
 			perEmailPerHour: PER_EMAIL_PER_HOUR
 		})
 

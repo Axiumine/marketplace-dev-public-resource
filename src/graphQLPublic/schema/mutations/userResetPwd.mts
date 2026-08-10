@@ -3,12 +3,8 @@ import { checkEmailLen } from '@axiumine/koa-utils/lib/checkEmailLen'
 import { guardPublicWrite } from '@lib/access/guardPublicWrite.mjs'
 import { userResetPwd as boundResetPwd } from '@lib/access/resetPwdFlowUser.mjs'
 import { GraphQLNonNull, GraphQLString } from 'graphql'
-import { Context } from 'koa'
 
-/** Same ceiling as the activation resend: both paths cost one outbound mail and write nothing else. */
-const PER_IP_PER_HOUR = 5
-
-/** Lower than the IP bucket, and separate from it — one address cannot be mail-bombed from many sources. */
+/** Reset mails one address can be made to receive per hour, across every source. */
 const PER_EMAIL_PER_HOUR = 3
 
 export interface IUserResetPwdArgs extends IResetPwdArgs {
@@ -18,10 +14,10 @@ export interface IUserResetPwdArgs extends IResetPwdArgs {
 /**
  * `resetPwd` for the customer tier, behind the Turnstile + rate-limit guard.
  *
- * A wrapper rather than the bound flow re-exported directly, because koa-utils' mutation takes no Koa
- * context and cannot be given one: the guard needs `ctx.ip`, and everything the flow itself needs is
- * already baked into the closure. Delegation keeps the throttle, the privacy behaviour and the mail all
- * exactly as the library defines them.
+ * A wrapper rather than the bound flow re-exported directly, because koa-utils' mutation has nowhere to
+ * run a gate of ours before it: the guard has to see the address and the Turnstile token first, and
+ * everything the flow itself needs is already baked into the closure. Delegation keeps the throttle, the
+ * privacy behaviour and the mail all exactly as the library defines them.
  *
  * ⚠️ The shop-owner `resetPwd` next to it in the schema is **not** guarded, and that asymmetry is
  * deliberate: the operator and shop-owner apps ship today and send no Turnstile token, so gating them is
@@ -40,17 +36,16 @@ export const userResetPwd = {
 		email: { type: new GraphQLNonNull(GraphQLString) },
 		turnstileToken: { type: GraphQLString }
 	},
-	async resolve(source: unknown, args: IUserResetPwdArgs, ctx: Context) {
+	async resolve(source: unknown, args: IUserResetPwdArgs) {
 		const { email, turnstileToken } = args
 
 		const uEmail = email.toLowerCase().trim()
 		checkEmailLen(uEmail)
 
-		await guardPublicWrite(ctx, {
+		await guardPublicWrite({
 			bucket: 'userResetPwd',
 			email: uEmail,
 			turnstileToken,
-			perIpPerHour: PER_IP_PER_HOUR,
 			perEmailPerHour: PER_EMAIL_PER_HOUR
 		})
 

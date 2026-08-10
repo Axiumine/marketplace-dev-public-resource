@@ -10,11 +10,7 @@ import { registerNewUser } from '@lib/db/registerNewUser.mjs'
 import { restartUserRegistration } from '@lib/db/restartUserRegistration.mjs'
 import { userForRegistration } from '@lib/db/userForRegistration.mjs'
 import { GraphQLBoolean, GraphQLError, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Context } from 'koa'
 import mongoose from 'mongoose'
-
-/** Registrations allowed from one IP per hour. Generous — an office or a phone network is one IP. */
-const PER_IP_PER_HOUR = 10
 
 /** Activation mails one address can be made to receive per hour, across every source. */
 const PER_EMAIL_PER_HOUR = 3
@@ -55,7 +51,7 @@ export const userRegister = {
 		repeatPassword: { type: new GraphQLNonNull(GraphQLString) },
 		turnstileToken: { type: GraphQLString }
 	},
-	async resolve(_: unknown, args: IUserRegisterArgs, ctx: Context) {
+	async resolve(_: unknown, args: IUserRegisterArgs) {
 		const { email, password, repeatPassword, turnstileToken } = args
 
 		const uEmail = email.toLowerCase().trim()
@@ -64,11 +60,10 @@ export const userRegister = {
 
 		if (password !== repeatPassword) throw throwErrorWrongUserInput('The two passwords do not match')
 
-		await guardPublicWrite(ctx, {
+		await guardPublicWrite({
 			bucket: 'userRegister',
 			email: uEmail,
 			turnstileToken,
-			perIpPerHour: PER_IP_PER_HOUR,
 			perEmailPerHour: PER_EMAIL_PER_HOUR
 		})
 

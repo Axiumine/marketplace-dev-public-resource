@@ -1,5 +1,4 @@
 import { GraphQLBoolean, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Context } from 'koa'
 import { Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -68,7 +67,6 @@ let userVerifyEmailResend: (typeof import('../src/graphQLPublic/schema/mutations
 let userResetPwd: (typeof import('../src/graphQLPublic/schema/mutations/userResetPwd.mts'))['userResetPwd']
 let userUpdatePwd: (typeof import('../src/graphQLPublic/schema/mutations/userUpdatePwd.mts'))['userUpdatePwd']
 
-const ctx = { ip: '203.0.113.7' } as Context
 const userId = new Types.ObjectId('507f1f77bcf86cd799439011')
 
 /** Mixed case and trailing space, because normalisation is asserted on nearly every path below. */
@@ -78,7 +76,7 @@ const EMAIL = 'customer@marketplace.test'
 const registerArgs = { email: TYPED_EMAIL, password: 'sup3r-secret', repeatPassword: 'sup3r-secret', turnstileToken: 'cf-token' }
 
 /** The guard's argument object, which four mutations build with four different sets of numbers. */
-const guardedWith = () => guardPublicWrite.mock.calls[0][1]
+const guardedWith = () => guardPublicWrite.mock.calls[0][0]
 
 beforeEach(async () => {
 	vi.clearAllMocks()
@@ -114,7 +112,7 @@ describe('userRegister — validation, before anything is spent', () => {
 	// Redis key and a bcrypt round. The normalised address goes to the checker and the raw password does:
 	// trimming a password would silently change what the customer typed.
 	it('checks the normalised address and the password as typed', async () => {
-		await userRegister.resolve(null, registerArgs, ctx)
+		await userRegister.resolve(null, registerArgs)
 
 		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
 		expect(checkPwdLen).toHaveBeenCalledExactlyOnceWith('sup3r-secret')
@@ -125,7 +123,7 @@ describe('userRegister — validation, before anything is spent', () => {
 			throw new Error('email too long')
 		})
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).rejects.toThrow('email too long')
+		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow('email too long')
 
 		expect(guardPublicWrite).not.toHaveBeenCalled()
 		expect(startSession).not.toHaveBeenCalled()
@@ -137,7 +135,7 @@ describe('userRegister — validation, before anything is spent', () => {
 	it('refuses two different passwords, before the guard and before the transaction', async () => {
 		// koa-utils puts the readable half in `extensions.description` and keeps `message` at the status
 		// title, so asserting on `message` alone would pass for every 400 this mutation can raise.
-		await expect(userRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' }, ctx)).rejects.toMatchObject({
+		await expect(userRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' })).rejects.toMatchObject({
 			message: 'Bad Request',
 			extensions: { http: { status: 400 }, description: 'The two passwords do not match' }
 		})
@@ -147,21 +145,20 @@ describe('userRegister — validation, before anything is spent', () => {
 	})
 
 	it('compares the passwords byte for byte, not case-insensitively', async () => {
-		await expect(userRegister.resolve(null, { ...registerArgs, repeatPassword: 'SUP3R-SECRET' }, ctx)).rejects.toMatchObject({
+		await expect(userRegister.resolve(null, { ...registerArgs, repeatPassword: 'SUP3R-SECRET' })).rejects.toMatchObject({
 			extensions: { description: 'The two passwords do not match' }
 		})
 	})
 })
 
 describe('userRegister — the guard', () => {
-	it('meters ten registrations an hour per IP and three mails per address', async () => {
-		await userRegister.resolve(null, registerArgs, ctx)
+	it('meters three activation mails an hour per address', async () => {
+		await userRegister.resolve(null, registerArgs)
 
-		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith(ctx, {
+		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
 			bucket: 'userRegister',
 			email: EMAIL,
 			turnstileToken: 'cf-token',
-			perIpPerHour: 10,
 			perEmailPerHour: 3
 		})
 	})
@@ -169,7 +166,7 @@ describe('userRegister — the guard', () => {
 	// The counter keys off the canonical address, so `Customer@…` and `customer@…` share one bucket —
 	// otherwise the per-address ceiling is bypassed by changing the capitalisation of the same inbox.
 	it('meters the canonical address, not the typed one', async () => {
-		await userRegister.resolve(null, registerArgs, ctx)
+		await userRegister.resolve(null, registerArgs)
 
 		expect(guardedWith().email).toBe(EMAIL)
 	})
@@ -177,7 +174,7 @@ describe('userRegister — the guard', () => {
 	it('never opens a transaction once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).rejects.toThrow('Too many requests')
+		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow('Too many requests')
 
 		expect(startSession).not.toHaveBeenCalled()
 		expect(userForRegistration).not.toHaveBeenCalled()
@@ -189,7 +186,7 @@ describe('userRegister — the three outcomes', () => {
 	// that throws 409 for a taken address is an account-enumeration oracle: anyone can ask it, one
 	// address at a time, who has an account here. The outcomes are distinguishable only in the inbox.
 	it('writes the document and sends the link when the address is free', async () => {
-		await expect(userRegister.resolve(null, registerArgs, ctx)).resolves.toBe(true)
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
 
 		expect(userForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
 		expect(registerNewUser).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret', session)
@@ -204,7 +201,7 @@ describe('userRegister — the three outcomes', () => {
 	it('writes nothing at all to a verified account, and says so only in the inbox', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true } })
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).resolves.toBe(true)
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
 
 		expect(emailAlreadyValid).toHaveBeenCalledExactlyOnceWith(EMAIL)
 		expect(registerNewUser).not.toHaveBeenCalled()
@@ -219,7 +216,7 @@ describe('userRegister — the three outcomes', () => {
 	it('restarts an unverified attempt with the new password and a new hash', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).resolves.toBe(true)
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
 
 		expect(restartUserRegistration).toHaveBeenCalledExactlyOnceWith(session, userId, 'sup3r-secret')
 		expect(setEmailHashUser).toHaveBeenCalledExactlyOnceWith(session, userId)
@@ -236,7 +233,7 @@ describe('userRegister — the three outcomes', () => {
 	])('treats %s as an unfinished attempt', async (_desc, existing) => {
 		userForRegistration.mockResolvedValueOnce(existing)
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).resolves.toBe(true)
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
 
 		expect(restartUserRegistration).toHaveBeenCalledOnce()
 		expect(emailAlreadyValid).not.toHaveBeenCalled()
@@ -247,7 +244,7 @@ describe('userRegister — the three outcomes', () => {
 	it('rewrites the document before it mints the hash, and mints before it sends', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
 
-		await userRegister.resolve(null, registerArgs, ctx)
+		await userRegister.resolve(null, registerArgs)
 
 		expect(restartUserRegistration.mock.invocationCallOrder[0]).toBeLessThan(setEmailHashUser.mock.invocationCallOrder[0])
 		expect(setEmailHashUser.mock.invocationCallOrder[0]).toBeLessThan(sendUserVerifyEmail.mock.invocationCallOrder[0])
@@ -258,7 +255,7 @@ describe('userRegister — the transaction', () => {
 	// One transaction so a mail is never sent for a document that failed to write. The reverse — document written,
 	// SocketLabs then refuses — stays possible by design, and `userVerifyEmailResend` is the recovery.
 	it('does all of its work inside one transaction, and always ends the session', async () => {
-		await userRegister.resolve(null, registerArgs, ctx)
+		await userRegister.resolve(null, registerArgs)
 
 		expect(startSession).toHaveBeenCalledOnce()
 		expect(withTransaction).toHaveBeenCalledOnce()
@@ -268,7 +265,7 @@ describe('userRegister — the transaction', () => {
 	it('ends the session even when the transaction throws', async () => {
 		registerNewUser.mockRejectedValueOnce(new Error('write conflict'))
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).rejects.toThrow()
+		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow()
 
 		expect(endSession).toHaveBeenCalledOnce()
 	})
@@ -278,7 +275,7 @@ describe('userRegister — the transaction', () => {
 	it('rethrows rather than answering true on a failed write', async () => {
 		registerNewUser.mockRejectedValueOnce(new Error('write conflict'))
 
-		await expect(userRegister.resolve(null, registerArgs, ctx)).rejects.toThrow()
+		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow()
 	})
 })
 
@@ -294,16 +291,15 @@ describe('userVerifyEmailResend', () => {
 		expect(userVerifyEmailResend.args.turnstileToken.type).toBe(GraphQLString)
 	})
 
-	// Tighter than registration's ten: this path sends a mail and writes nothing else, so there is no
-	// legitimate reason to call it five times an hour from one address in the first place.
-	it('meters five an hour per IP, three per address, in its own bucket', async () => {
-		await userVerifyEmailResend.resolve(null, resendArgs, ctx)
+	// Same ceiling as registration, in a bucket of its own: this path sends a mail and writes nothing
+	// else, and burning the resend allowance must not spend the registration one.
+	it('meters three an hour per address, in its own bucket', async () => {
+		await userVerifyEmailResend.resolve(null, resendArgs)
 
-		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith(ctx, {
+		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
 			bucket: 'userVerifyEmailResend',
 			email: EMAIL,
 			turnstileToken: 'cf-token',
-			perIpPerHour: 5,
 			perEmailPerHour: 3
 		})
 		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
@@ -314,7 +310,7 @@ describe('userVerifyEmailResend', () => {
 	it('re-issues the link for a live unverified registration', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
 
-		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).resolves.toBe(true)
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
 
 		expect(setEmailHashUser).toHaveBeenCalledExactlyOnceWith(session, userId)
 		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
@@ -331,7 +327,7 @@ describe('userVerifyEmailResend', () => {
 	])('answers true and sends nothing for %s', async (_desc, existing) => {
 		userForRegistration.mockResolvedValueOnce(existing)
 
-		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).resolves.toBe(true)
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
 
 		expect(setEmailHashUser).not.toHaveBeenCalled()
 		expect(sendUserVerifyEmail).not.toHaveBeenCalled()
@@ -345,13 +341,13 @@ describe('userVerifyEmailResend', () => {
 	it('treats a document with no emailVerify as unverified, and re-issues rather than throwing', async () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId })
 
-		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).resolves.toBe(true)
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
 
 		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
 	})
 
 	it('ends the session on every path, including the ones that write nothing', async () => {
-		await userVerifyEmailResend.resolve(null, resendArgs, ctx)
+		await userVerifyEmailResend.resolve(null, resendArgs)
 
 		expect(withTransaction).toHaveBeenCalledOnce()
 		expect(endSession).toHaveBeenCalledOnce()
@@ -361,7 +357,7 @@ describe('userVerifyEmailResend', () => {
 		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
 		sendUserVerifyEmail.mockRejectedValueOnce(new Error('SocketLabs refused'))
 
-		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).rejects.toThrow()
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).rejects.toThrow()
 
 		expect(endSession).toHaveBeenCalledOnce()
 	})
@@ -369,7 +365,7 @@ describe('userVerifyEmailResend', () => {
 	it('never opens a transaction once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
-		await expect(userVerifyEmailResend.resolve(null, resendArgs, ctx)).rejects.toThrow('Too many requests')
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).rejects.toThrow('Too many requests')
 
 		expect(startSession).not.toHaveBeenCalled()
 	})
@@ -392,14 +388,13 @@ describe('userResetPwd', () => {
 	// ⚠️ The shop-owner `resetPwd` beside it in the schema is **not** guarded, deliberately: those two
 	// apps ship today and send no Turnstile token, so gating them is a coordinated frontend change. The
 	// customer tier has no frontend yet, so it is born with the gate on.
-	it('meters five an hour per IP and three per address before delegating', async () => {
-		await userResetPwd.resolve(null, resetArgs, ctx)
+	it('meters three an hour per address before delegating', async () => {
+		await userResetPwd.resolve(null, resetArgs)
 
-		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith(ctx, {
+		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
 			bucket: 'userResetPwd',
 			email: EMAIL,
 			turnstileToken: 'cf-token',
-			perIpPerHour: 5,
 			perEmailPerHour: 3
 		})
 		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
@@ -411,7 +406,7 @@ describe('userResetPwd', () => {
 	it('delegates with the caller’s arguments untouched, and returns what the flow returns', async () => {
 		const source = { some: 'source' }
 
-		await expect(userResetPwd.resolve(source, resetArgs, ctx)).resolves.toBe('delegated-reset')
+		await expect(userResetPwd.resolve(source, resetArgs)).resolves.toBe('delegated-reset')
 
 		expect(boundResetPwdResolve).toHaveBeenCalledExactlyOnceWith(source, resetArgs)
 		expect(boundResetPwdResolve.mock.calls[0][1].email).toBe(TYPED_EMAIL)
@@ -420,7 +415,7 @@ describe('userResetPwd', () => {
 	it('sends no mail once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
-		await expect(userResetPwd.resolve(null, resetArgs, ctx)).rejects.toThrow('Too many requests')
+		await expect(userResetPwd.resolve(null, resetArgs)).rejects.toThrow('Too many requests')
 
 		expect(boundResetPwdResolve).not.toHaveBeenCalled()
 	})
@@ -438,18 +433,17 @@ describe('userUpdatePwd', () => {
 		expect(userUpdatePwd.args.turnstileToken.type).toBe(GraphQLString)
 	})
 
-	// ⚠️ Higher ceilings than the request side, and metered against **guessing the hash** rather than
+	// ⚠️ A higher ceiling than the request side, and metered against **guessing the hash** rather than
 	// against sending mail. koa-utils answers a wrong hash with the same 403 an unknown address gets, so
 	// nothing leaks — but nothing costs the caller anything either, and an unmetered 403 is an invitation
 	// to keep asking. The limit is what turns the hash into a secret that has to be received.
-	it('allows twenty an hour per IP and ten per address, in its own bucket', async () => {
-		await userUpdatePwd.resolve(null, updateArgs, ctx)
+	it('allows ten an hour per address, in its own bucket', async () => {
+		await userUpdatePwd.resolve(null, updateArgs)
 
-		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith(ctx, {
+		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
 			bucket: 'userUpdatePwd',
 			email: EMAIL,
 			turnstileToken: 'cf-token',
-			perIpPerHour: 20,
 			perEmailPerHour: 10
 		})
 		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
@@ -458,7 +452,7 @@ describe('userUpdatePwd', () => {
 	it('delegates the hash and the new password verbatim, and returns the flow’s answer', async () => {
 		const source = { some: 'source' }
 
-		await expect(userUpdatePwd.resolve(source, updateArgs, ctx)).resolves.toBe('delegated-update')
+		await expect(userUpdatePwd.resolve(source, updateArgs)).resolves.toBe('delegated-update')
 
 		expect(boundUpdatePwdResolve).toHaveBeenCalledExactlyOnceWith(source, updateArgs)
 	})
@@ -466,7 +460,7 @@ describe('userUpdatePwd', () => {
 	it('never reaches the delegate once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
-		await expect(userUpdatePwd.resolve(null, updateArgs, ctx)).rejects.toThrow('Too many requests')
+		await expect(userUpdatePwd.resolve(null, updateArgs)).rejects.toThrow('Too many requests')
 
 		expect(boundUpdatePwdResolve).not.toHaveBeenCalled()
 	})

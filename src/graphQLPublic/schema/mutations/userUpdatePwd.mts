@@ -3,18 +3,8 @@ import { checkEmailLen } from '@axiumine/koa-utils/lib/checkEmailLen'
 import { guardPublicWrite } from '@lib/access/guardPublicWrite.mjs'
 import { userUpdatePwd as boundUpdatePwd } from '@lib/access/resetPwdFlowUser.mjs'
 import { GraphQLNonNull, GraphQLString } from 'graphql'
-import { Context } from 'koa'
 
-/**
- * Higher than the request side, and on purpose: this one is metered against **guessing the hash**, not
- * against sending mail. A legitimate caller submits the form once, maybe twice if the password rules
- * reject the first try. A caller working through the 50-character hash space needs many orders of
- * magnitude more than any ceiling here, so the number only has to be large enough not to bite a person
- * who mistypes.
- */
-const PER_IP_PER_HOUR = 20
-
-/** Per address, so one hijack attempt cannot be spread across a botnet to evade the IP bucket. */
+/** Per address, so one hijack attempt spread across a botnet still spends a single budget. */
 const PER_EMAIL_PER_HOUR = 10
 
 export interface IUserUpdatePwdArgs extends IUpdatePasswordArgs {
@@ -42,17 +32,16 @@ export const userUpdatePwd = {
 		password: { type: new GraphQLNonNull(GraphQLString) },
 		turnstileToken: { type: GraphQLString }
 	},
-	async resolve(source: unknown, args: IUserUpdatePwdArgs, ctx: Context) {
+	async resolve(source: unknown, args: IUserUpdatePwdArgs) {
 		const { email, turnstileToken } = args
 
 		const uEmail = email.toLowerCase().trim()
 		checkEmailLen(uEmail)
 
-		await guardPublicWrite(ctx, {
+		await guardPublicWrite({
 			bucket: 'userUpdatePwd',
 			email: uEmail,
 			turnstileToken,
-			perIpPerHour: PER_IP_PER_HOUR,
 			perEmailPerHour: PER_EMAIL_PER_HOUR
 		})
 

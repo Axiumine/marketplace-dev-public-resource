@@ -28,14 +28,28 @@ export const RESET_PWD_PATHS_USER: IResetPwdPaths = {
 }
 
 /**
- * The front-end route that renders the new-password form on the storefront.
+ * The front-end route that renders the new-password form on the storefront, and the `#` that keeps the
+ * credential out of every server that handles the click.
  *
  * ⚠️ A **front-end** path, unlike `/check/verify-email-user/:email/:hash`, which is a router mount in
  * this process. Nothing here fails when it is wrong — the link is only ever followed by a person, who
  * lands on a 404 with a valid hash in the URL. It has to keep matching `marketplace-user`'s
- * `/reset-password/$email/$hash` route; changing one without the other is invisible to every gate.
+ * `/reset-password/confirm` route; changing one without the other is invisible to every gate.
+ *
+ * ⚠️ **The trailing `#` is load-bearing punctuation, not a typo** (E12-S26). `sendEmailReset` normalises
+ * only `linkPath`'s *leading* slash and then appends the pair itself —
+ * `` `${base}${path}/${encodeURI(email)}/${hash}` ``, `koa-utils/dist/email/SocketLabsLib.mjs:280-283` —
+ * so this value makes the mailed link `https://host/reset-password/confirm#/<address>/<hash>`. A
+ * fragment is never transmitted (RFC 3986 §3.5): the credential stops existing in the request line, and
+ * therefore in every access log, `Referer`, proxy cache key and CDN copy along the way. Removing the `#`
+ * puts it back in all of them *and* leaves a link that 404s, because nothing is mounted at
+ * `/reset-password/confirm/:email/:hash` any more.
+ *
+ * ⚠️ **Not `/reset-password`**, which is the *other* half of this flow — the screen that asks for an
+ * address. The server never sees a fragment, so every mailed link would land there and render the form
+ * that asks for an address instead of the one that takes a new password.
  */
-const RESET_PATH_USER = '/reset-password'
+const RESET_PATH_USER = '/reset-password/confirm#'
 
 /**
  * `personalData.firstName` is optional on `user` — registration is email and password only, and the

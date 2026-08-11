@@ -188,19 +188,51 @@ describe('resetPwdFlowUser', () => {
 	// choice itself: by the time it holds an email and a hash, two collections behind this one process
 	// look identical.
 	it('mails the link on the storefront domain, at the frontend reset route', () => {
-		expect(createResetPwdMailer).toHaveBeenCalledExactlyOnceWith(APP_DOMAIN_USER, '/reset-password')
+		expect(createResetPwdMailer).toHaveBeenCalledExactlyOnceWith(APP_DOMAIN_USER, '/reset-password/confirm#')
 		expect(createResetPwdFlow.mock.calls[0][0].mailer).toBe(boundMailer)
 	})
 
-	// `/reset-password` is a **front-end** path, unlike `/check/verify-email-user/:email/:hash` which
-	// is mounted in this process. Nothing fails when it is wrong — the link is followed by a person,
-	// who lands on a 404 holding a valid hash — so this assertion is the only thing standing between
-	// that route and a silent rename in `marketplace-user`.
+	// `/reset-password/confirm` is a **front-end** path, unlike `/check/verify-email-user/:email/:hash`
+	// which is mounted in this process. Nothing fails when it is wrong — the link is followed by a
+	// person, who lands on a 404 holding a valid hash — so this assertion is the only thing standing
+	// between that route and a silent rename in `marketplace-user`.
 	it('names the customer app’s route, not this service’s router prefix', () => {
 		const [, path] = createResetPwdMailer.mock.calls[0]
 
-		expect(path).toBe('/reset-password')
+		expect(path).toBe('/reset-password/confirm#')
 		expect(path).not.toMatch(/^\/check/)
+	})
+
+	/*
+	 * ⚠️ The trailing `#` is the whole of E12-S26 and the one character in this file that a tidy-up
+	 * would remove. The link is assembled here the way koa-utils assembles it — `${base}${path}` then
+	 * `/${encodeURI(email)}/${hash}`, `SocketLabsLib.mjs:280-283` — and handed to the platform's own URL
+	 * parser rather than to a regex, so what is asserted is where a *browser* puts the credential: in
+	 * `hash`, which RFC 3986 §3.5 never sends to a server, and out of `pathname`, which is what lands in
+	 * an access log, a `Referer` and a proxy cache key.
+	 *
+	 * This mirrors a dependency rather than driving it: `createResetPwdMailer` is mocked in this file, so
+	 * a koa-utils release that changed the concatenation would leave this green. That is a version-bump
+	 * risk, stated, and the alternative — booting the real SocketLabs client — tests the vendor.
+	 */
+	it('puts the credential in the fragment, where no server can see it', () => {
+		const [, path] = createResetPwdMailer.mock.calls[0]
+		const link = new URL(`https://user.example${path}/${encodeURI('alice@example.com')}/9f3cabcd`)
+
+		expect(link.href).toBe('https://user.example/reset-password/confirm#/alice@example.com/9f3cabcd')
+		expect(link.hash).toBe('#/alice@example.com/9f3cabcd')
+		expect(link.pathname).toBe('/reset-password/confirm')
+		expect(link.pathname).not.toContain('9f3cabcd')
+	})
+
+	// The confirm screen is a page of its own, never the ask-for-your-address screen: the server cannot
+	// see the fragment, so a link pointing at `/reset-password` would render the form that asks for an
+	// address and silently drop the credential the customer just clicked.
+	it('does not point the mail at the first half of the flow', () => {
+		const [, path] = createResetPwdMailer.mock.calls[0]
+
+		expect(path).not.toBe('/reset-password')
+		expect(path).not.toBe('/reset-password#')
 	})
 
 	// The gate koa-utils applies before it will send anything. Same argument as on the verify flow:

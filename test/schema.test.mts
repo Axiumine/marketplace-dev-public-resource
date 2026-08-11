@@ -72,17 +72,25 @@ describe('queries.publicHelloArgs', () => {
 	})
 
 	it('interpolates the name into the greeting', () => {
-		const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
-
 		expect(publicHelloArgs.resolve(null, { name: 'Mark' })).toEqual({
 			txt: 'Hello from publicHelloArgs - Mark!'
 		})
+	})
 
-		// Pins the exact debug-log message: a passing `toHaveBeenCalled()` here would survive a
-		// mutant that blanks the literal to '' (or drops it and the args.name argument entirely).
-		expect(debug).toHaveBeenCalledExactlyOnceWith('publicHelloArgs: name: ', 'Mark')
+	// E12-S20. The argument reached `console.debug` here and nowhere else in nine services, which is what
+	// made it the one planted marker E12-S12 found on disk. The assertion is on the console object rather
+	// than on one method: a later edit that reaches for `log` or `info` instead has changed nothing about
+	// why this line exists.
+	it('writes the caller-supplied name to no console method at all', () => {
+		const spies = (['debug', 'log', 'info', 'warn', 'error'] as const).map((method) =>
+			vi.spyOn(console, method).mockImplementation(() => undefined)
+		)
 
-		debug.mockRestore()
+		publicHelloArgs.resolve(null, { name: 'Mark' })
+
+		for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+
+		vi.restoreAllMocks()
 	})
 })
 
@@ -117,8 +125,6 @@ describe('QueriesPublic', () => {
 	})
 
 	it('runs the args query end-to-end', async () => {
-		vi.spyOn(console, 'debug').mockImplementation(() => {})
-
 		const result = await graphql({
 			schema: new GraphQLSchema({ query: QueriesPublic }),
 			source: '{ publicHelloArgs(name: "Luigi") { txt } }'
@@ -126,8 +132,6 @@ describe('QueriesPublic', () => {
 
 		expect(result.errors).toBeUndefined()
 		expect(result.data).toEqual({ publicHelloArgs: { txt: 'Hello from publicHelloArgs - Luigi!' } })
-
-		vi.restoreAllMocks()
 	})
 
 	it('rejects the args query without the mandatory name', async () => {

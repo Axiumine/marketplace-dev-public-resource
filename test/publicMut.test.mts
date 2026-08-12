@@ -91,13 +91,14 @@ describe('mutations.publicMutArgs', () => {
 })
 
 describe('MutationsPublic', () => {
-	it('mounts the demo pair, the reset flow and the two customer mutations as its fields', () => {
+	it('mounts the demo pair, the reset flow, seller registration and the customer mutations as its fields', () => {
 		expect(MutationsPublic.name).toBe('MutationsPublic')
 		expect(Object.keys(MutationsPublic.getFields())).toEqual([
 			'publicMutArgs',
 			'publicMutNoArgs',
 			'resetPwd',
 			'updatePwd',
+			'shopOwnerRegister',
 			'userRegister',
 			'userResetPwd',
 			'userUpdatePwd',

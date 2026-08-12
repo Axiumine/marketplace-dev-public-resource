@@ -75,3 +75,14 @@ const flow = createVerifyEmailFlow({
  * interface's public key instead.
  */
 export const routerVerifyEmail: IVerifyEmailFlow['routerVerifyEmail'] = flow.routerVerifyEmail
+
+/**
+ * Mints a fresh 50-character hash on an existing document, resetting `requestTimes` to 1 and
+ * `dateLastReq` to now — which restarts the three-day window and clears the wrong-hash strike count.
+ *
+ * Exposed because `shopOwnerRegister` needs it for the already-registered-but-unverified case:
+ * somebody who signed up, never opened the mail and came back to the form gets the same three
+ * indistinguishable answers a customer does, and the restart path has to re-mint the hash without
+ * reimplementing the `$set` and drifting from the paths map above.
+ */
+export const setEmailHash: IVerifyEmailFlow['setEmailHash'] = flow.setEmailHash

@@ -6,7 +6,8 @@ import { expectFlowArguments, expectFreshDateFactory, expectSoftDeleteOnAbandon 
 // Sentinel: the factory is koa-utils' and is tested there. What this file pins is what WE hand it,
 // and that the handler it returns is the one the router mounts.
 const boundRouterVerifyEmail = { __sentinel: 'routerVerifyEmail' }
-const createVerifyEmailFlow = vi.fn(() => ({ routerVerifyEmail: boundRouterVerifyEmail }))
+const boundSetEmailHash = { __sentinel: 'setEmailHash' }
+const createVerifyEmailFlow = vi.fn(() => ({ routerVerifyEmail: boundRouterVerifyEmail, setEmailHash: boundSetEmailHash }))
 
 vi.mock('@axiumine/koa-utils/lib/access/createVerifyEmailFlow', () => ({ createVerifyEmailFlow }))
 
@@ -16,9 +17,10 @@ vi.mock('@axiumine/koa-utils/lib/access/createVerifyEmailFlow', () => ({ createV
 // reported Survived even though the assertions below plainly fail against it.
 let VERIFY_EMAIL_PATHS: (typeof import('../src/lib/access/verifyEmailFlow.mts'))['VERIFY_EMAIL_PATHS']
 let routerVerifyEmail: (typeof import('../src/lib/access/verifyEmailFlow.mts'))['routerVerifyEmail']
+let setEmailHash: (typeof import('../src/lib/access/verifyEmailFlow.mts'))['setEmailHash']
 
 beforeAll(async () => {
-	;({ VERIFY_EMAIL_PATHS, routerVerifyEmail } = await import('../src/lib/access/verifyEmailFlow.mts'))
+	;({ VERIFY_EMAIL_PATHS, routerVerifyEmail, setEmailHash } = await import('../src/lib/access/verifyEmailFlow.mts'))
 })
 
 const EXPECTED = {
@@ -146,7 +148,11 @@ describe('verifyEmailFlow', () => {
 		}
 	})
 
-	it('re-exports the flow-bound router factory', () => {
+	// Both are re-exported and neither may be taken from koa-utils' own exports, which are bound to
+	// UserBase: the router needs the handler, and `shopOwnerRegister` needs the hash minter for the
+	// restart branch — a seller who signed up, never opened the mail and came back to the form.
+	it('re-exports the flow-bound router factory and hash minter', () => {
 		expect(routerVerifyEmail).toBe(boundRouterVerifyEmail)
+		expect(setEmailHash).toBe(boundSetEmailHash)
 	})
 })

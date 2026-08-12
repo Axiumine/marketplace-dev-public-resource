@@ -56,8 +56,8 @@ describe('start() when MongoDB refuses the connection', () => {
 	 * calling checkRequiredEnv() directly, so it is that ordering being tested and not just the
 	 * guard's own loop.
 	 *
-	 * REDIS_KEY stands in for the missing variable here rather than a Keygrip key: this is the public
-	 * tier's catalog service, it signs no cookies, and REQUIRED_ENV_VARS carries no KEYGRIP_KEY_* at
+	 * REDIS_KEY stands in for the missing variable here rather than a keygrip one: this is the public
+	 * tier's catalog service, it signs no cookies, and REQUIRED_ENV_VARS carries no keygrip entry at
 	 * all. It also has to be an entry no connection reads, or the two assertions below would hold for
 	 * the wrong reason — REDIS_KEY is only a session-key prefix, so if the guard ever moved inside
 	 * start()'s try both datasources would come up and this test would fail, which is the point.

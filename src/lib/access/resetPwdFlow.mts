@@ -40,9 +40,13 @@ export const RESET_PWD_PATHS: IResetPwdPaths = {
  * `'false'` would read truthy and block resets; that cannot happen here, because the migration pins
  * `disabled` to `bsonType: 'bool'` and `deleted` to `bsonType: 'date'` under a strict validator.
  *
- * `waitApprov` is deliberately absent. Nothing gates on it anywhere — login neither projects nor
- * reads it, and only the admin area writes and displays it — so the reset flow ignoring it changes
- * nothing. If the manual-approval gate is meant to bite, it has to bite at login first.
+ * `waitApprov` is deliberately absent, and stays absent now that the gate is real. A shop owner
+ * parked pending approval can still ask for a reset link and still set a new password; what they
+ * cannot do is use it, because `checkShopOwnerApproval` refuses them at login and again on every
+ * refresh. Adding the flag here would buy no security — the account is already unusable — and would
+ * cost the one thing this comment is otherwise about: `createResetPwdFlow` answers `null` for a
+ * blocked account, so a parked shop owner would get silence where an approved one gets an email,
+ * which is a state oracle on an address anyone can type into the form.
  */
 const flow = createResetPwdFlow({ model: ShopOwner, paths: RESET_PWD_PATHS })
 

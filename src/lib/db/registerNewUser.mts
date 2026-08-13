@@ -1,5 +1,4 @@
 import { emailHash } from '@axiumine/koa-utils/lib/emailHash'
-import { encryptPassword } from '@axiumine/koa-utils/lib/encryptPassword'
 import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { ClientSession, Types } from 'mongoose'
 
@@ -20,6 +19,20 @@ import { ClientSession, Types } from 'mongoose'
  * send counter: the verify router increments it on a *wrong* hash and disposes of the registration at
  * five. Starting it at 1 rather than 0 is koa-utils' convention and the guard's threshold is set
  * against it — see `handleIfTooMuchRequestsTimes`.
+ *
+ * ⚠️ **The plaintext password is handed over deliberately: `create` hashes it and this function must
+ * not.** `LoginSubDocSchema` carries a `pre('save')` that bcrypts `password` whenever the path is
+ * modified, so a `create` on a fresh document always runs it. Calling `encryptPassword` here as well
+ * stored `bcrypt(bcrypt(password))`, and the account it opened could never log in — the login compares
+ * the plaintext against a hash of a hash. That is not a hypothetical: it is what this line did until
+ * 2026-08-13, and it was found by registering an account against the running stack (E18-S09), not by
+ * reading. Nothing in a unit test could see it, because a mocked model runs no middleware.
+ *
+ * The two restart-registration siblings hash explicitly and are right to: they write with `updateOne`,
+ * which runs no document middleware at all. **Which of the two rules applies is decided by the write
+ * operator, never by the field** — `create`/`save` hash themselves, `updateOne`/`findOneAndUpdate` do
+ * not. `shopOwnerAdd` on the Admin service passes its operator's plaintext straight to `create` for the
+ * same reason this does.
  */
 export async function registerNewUser(uEmail: string, password: string, session: ClientSession) {
 	const hashConfirmEmail = emailHash()
@@ -31,7 +44,7 @@ export async function registerNewUser(uEmail: string, password: string, session:
 				_id: new Types.ObjectId(),
 				login: {
 					email: uEmail,
-					password: await encryptPassword(password)
+					password
 				},
 				registeredAt: nowDt,
 				emailVerify: {

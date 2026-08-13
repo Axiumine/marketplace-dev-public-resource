@@ -72,6 +72,34 @@ const {
 } = await import('../src/index.mts')
 
 describe('checkRequiredEnv', () => {
+	/*
+	 * ⚠️ The whole list, by value and in order, rather than a length or a `toContain`. This array is a
+	 * contract with every environment the service is deployed into, and both ways of breaking it are
+	 * silent: a name dropped from here turns a fatal misconfiguration into a service that starts and
+	 * fails later, at a request, somewhere that does not name the cause; a name added here and read
+	 * nowhere makes every environment carry a value that does nothing. A length check passes a swap and
+	 * a `toContain` passes an addition, so neither notices the change. The order is asserted too — the
+	 * boot names the *first* missing variable, and that is the one an operator goes looking for. E18-S03.
+	 */
+	it('requires exactly these 14 variables, in this order', () => {
+		expect(REQUIRED_ENV_VARS).toStrictEqual([
+			'PORT',
+			'REDIS_IS_CLUSTER',
+			'REDIS_DB1_HOST',
+			'REDIS_DB2_HOST',
+			'REDIS_DB3_HOST',
+			'REDIS_DB1_PORT',
+			'REDIS_DB2_PORT',
+			'REDIS_DB3_PORT',
+			'REDIS_USERNAME',
+			'REDIS_PASSWORD',
+			'REDIS_KEY',
+			'MONGODB_URI',
+			'CSFLE_MASTER_KEY_PATH',
+			'CSFLE_KEY_VAULT_NAMESPACE'
+		])
+	})
+
 	it('passes when every required variable is set', () => {
 		const env = Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x']))
 		expect(() => checkRequiredEnv(env)).not.toThrow()

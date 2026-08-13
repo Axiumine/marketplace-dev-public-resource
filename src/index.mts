@@ -42,7 +42,21 @@ export const REQUIRED_ENV_VARS = [
 	// service that booted without them would read every personal field as raw `binData` and write
 	// plaintext beside the ciphertext already there.
 	'CSFLE_MASTER_KEY_PATH',
-	'CSFLE_KEY_VAULT_NAMESPACE'
+	'CSFLE_KEY_VAULT_NAMESPACE',
+	// ⚠️ Everything `SocketLabsLib`'s constructor reads, plus the two domains this service's own call
+	// sites pass it. This is the only service that sends mail — registration verification for both
+	// `shopOwner` and `user`, and the "your address is already verified" reply — and until E18-S10 it
+	// required none of these while two services that send no mail required the credential pair. The
+	// failure that hid it is quiet: `SocketLabsLib` reads the key into a template literal, so an unset
+	// variable becomes the string `"undefined"`, the client builds, and the first registration email of
+	// the deployment is the thing that fails. `APP_DOMAIN` is the shop-owner link base and
+	// `APP_DOMAIN_USER` the customer one — swapping them sends each tier to the other's front door.
+	'SOCKETLABS_SERVER_ID',
+	'SOCKETLABS_SERVER_APIKEY',
+	'PLATFORM_NAME',
+	'EMAIL_FROM',
+	'APP_DOMAIN',
+	'APP_DOMAIN_USER'
 ]
 
 /**

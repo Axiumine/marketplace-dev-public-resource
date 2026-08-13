@@ -87,7 +87,19 @@ export default defineConfig({
 						// ADR-029. start() refuses to boot without these two, and the file the first one
 						// names is minted by globalSetup — a throwaway, never the platform's own key.
 						CSFLE_MASTER_KEY_PATH: TEST_CSFLE_MASTER_KEY_PATH,
-						CSFLE_KEY_VAULT_NAMESPACE: TEST_CSFLE_KEY_VAULT_NAMESPACE
+						CSFLE_KEY_VAULT_NAMESPACE: TEST_CSFLE_KEY_VAULT_NAMESPACE,
+						// E18-S10 put everything SocketLabsLib reads into REQUIRED_ENV_VARS, so the suite pins
+						// its own placeholders instead of borrowing whatever the developer's .env holds. Two
+						// reasons, both about the mail account rather than about passing: no test here drives a
+						// path that really sends (index.itest.mts says which and why), and a run that fell back
+						// to the live credentials would be one edit away from sending for real. `.invalid` is
+						// the reserved TLD — a link built from these resolves nowhere by design.
+						SOCKETLABS_SERVER_ID: '0',
+						SOCKETLABS_SERVER_APIKEY: 'placeholder-not-a-real-key',
+						PLATFORM_NAME: 'Marketplace integration suite',
+						EMAIL_FROM: 'noreply@itest.invalid',
+						APP_DOMAIN: 'https://shopowner.itest.invalid',
+						APP_DOMAIN_USER: 'https://user.itest.invalid'
 					},
 					fileParallelism: false,
 					testTimeout: 30000,

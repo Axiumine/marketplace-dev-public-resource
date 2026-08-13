@@ -46,16 +46,18 @@ describe('registerNewUser', () => {
 		expect(created()).not.toHaveProperty('waitApprov')
 	})
 
-	// ⚠️ The password reaches Mongo through bcrypt or not at all. Asserting both halves — that
-	// `encryptPassword` saw the plaintext, and that what is written is *not* the plaintext — is what
-	// makes a dropped `await` or a swapped argument fail here instead of in production, where a stored
-	// plaintext password looks exactly like a stored hash to every caller.
-	it('stores the password only after bcrypt has had it', async () => {
+	// ⚠️ **The plaintext is handed over on purpose, and `encryptPassword` must not be called.**
+	// `LoginSubDocSchema`'s `pre('save')` bcrypts the path on every `create`, so hashing here too stored
+	// `bcrypt(bcrypt(password))` and opened an account that could never log in — which is what this
+	// function did until 2026-08-13. This test asserts the half a mocked model can see: what `create` is
+	// handed. **It cannot see the other half**, because a mock runs no middleware, and that blindness is
+	// exactly how the defect survived a suite at 100% — the hook firing is proved for real in
+	// `test/integration/index.itest.mts` and in marketplace-common's `models.int.test.mts`.
+	it('hands create the plaintext, leaving the hashing to the model’s pre-save hook', async () => {
 		await registerNewUser('customer@marketplace.test', 'sup3r-secret', session)
 
-		expect(encryptPassword).toHaveBeenCalledExactlyOnceWith('sup3r-secret')
-		expect(created().login).toEqual({ email: 'customer@marketplace.test', password: 'bcrypt(sup3r-secret)' })
-		expect(created().login.password).not.toBe('sup3r-secret')
+		expect(encryptPassword).not.toHaveBeenCalled()
+		expect(created().login).toEqual({ email: 'customer@marketplace.test', password: 'sup3r-secret' })
 	})
 
 	// ⚠️ `requestTimes: 1` is koa-utils' convention and a *strike* counter, not a send counter: the

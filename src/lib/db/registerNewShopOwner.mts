@@ -1,5 +1,4 @@
 import { emailHash } from '@axiumine/koa-utils/lib/emailHash'
-import { encryptPassword } from '@axiumine/koa-utils/lib/encryptPassword'
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import { ClientSession, Types } from 'mongoose'
 
@@ -27,6 +26,12 @@ import { ClientSession, Types } from 'mongoose'
  * `requestTimes: 1` matches what koa-utils' `setEmailHash` writes, and it is a strike counter, not a
  * send counter: the verify router increments it on a *wrong* hash and disposes of the registration at
  * five.
+ *
+ * ⚠️ **The plaintext password is handed over deliberately: `create` hashes it and this function must
+ * not.** `LoginSubDocSchema`'s `pre('save')` bcrypts the path whenever it is modified, so a `create`
+ * always runs it; hashing here too stored `bcrypt(bcrypt(password))` and left an account that could
+ * never log in. The full argument, and how it was found, is on `registerNewUser` — the two are the same
+ * three lines and were wrong in the same way until 2026-08-13.
  */
 export async function registerNewShopOwner(uEmail: string, password: string, session: ClientSession) {
 	const hashConfirmEmail = emailHash()
@@ -38,7 +43,7 @@ export async function registerNewShopOwner(uEmail: string, password: string, ses
 				_id: new Types.ObjectId(),
 				login: {
 					email: uEmail,
-					password: await encryptPassword(password)
+					password
 				},
 				registeredAt: nowDt,
 				waitApprov: true,

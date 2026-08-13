@@ -6,11 +6,16 @@ import { createVerifyEmailFlow } from '@axiumine/koa-utils/lib/access/createVeri
 import type { IVerifyEmailMailer } from '@axiumine/koa-utils/lib/access/verifyEmailMailer'
 import { decryptDocument } from '@axiumine/marketplace-common/encryption/decryptDocument'
 import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
-import { ENCRYPTED_FIELDS_SHOP_OWNER, KEY_ALT_NAME_SHOP_OWNER } from '@axiumine/marketplace-common/encryption/encryptedFields'
+import {
+	ENCRYPTED_FIELDS_SHOP_OWNER,
+	KEY_ALT_NAME_SHOP_OWNER,
+	KEY_ALT_NAME_USER
+} from '@axiumine/marketplace-common/encryption/encryptedFields'
 import { ALGORITHM_DETERMINISTIC } from '@axiumine/marketplace-common/encryption/EncryptionAlgorithm'
 import { encryptValue } from '@axiumine/marketplace-common/encryption/fieldEncryption'
 import { isCiphertext } from '@axiumine/marketplace-common/encryption/isCiphertext'
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
+import bcrypt from '@node-rs/bcrypt'
 import * as dotenv from 'dotenv'
 import type { Server } from 'http'
 import mongoose from 'mongoose'
@@ -22,6 +27,8 @@ dotenv.config()
 
 import { ENDPOINT, start } from '../../src/index.mts'
 import { VERIFY_EMAIL_PATHS } from '../../src/lib/access/verifyEmailFlow.mts'
+import { registerNewShopOwner } from '../../src/lib/db/registerNewShopOwner.mts'
+import { registerNewUser } from '../../src/lib/db/registerNewUser.mts'
 
 const REDIS_KEY = process.env.REDIS_KEY as string
 
@@ -172,6 +179,9 @@ afterAll(async () => {
 	// elsewhere in the platform for consistency.
 	for (const _id of seededShopOwnerIds) {
 		await drainSafely(`shopOwner ${_id.toString()}`, () => db().collection('shopOwner').deleteOne({ _id }))
+	}
+	for (const { collection, _id } of registeredIds) {
+		await drainSafely(`${collection} ${_id.toString()}`, () => db().collection(collection).deleteOne({ _id }))
 	}
 	await new Promise<void>((resolve) => httpServer.close(() => resolve()))
 	await redisClient.close()
@@ -654,6 +664,83 @@ describe('personal fields at rest', () => {
 		// the shop-owner table in the admin frontend, which a ciphertext would order by its bytes.
 		expect(isCiphertext(stored?.login.password)).toBe(false)
 		expect(stored?.personalData.address.city).toBe('Springfield')
+	})
+})
+
+/****************************************************************************************
+ * The half of registration a mocked model cannot see.
+ *
+ * Every other test of these two functions mocks `User` / `ShopOwner`, and a mock runs no document
+ * middleware — so a suite at 100% coverage and mutation score 100 watched `registerNewUser` hash a
+ * password that `LoginSubDocSchema`'s `pre('save')` then hashed again, and called it green. The
+ * accounts that write opened could never log in: `loginUser` compares the plaintext against
+ * `bcrypt(bcrypt(password))`. It was found by registering against the running stack (E18-S09), which
+ * is the only place it was visible.
+ *
+ * These two tests are that observation, made permanent and cheap: write through the real model, read
+ * the credential back with the raw driver, and ask bcrypt whether the plaintext still matches. Both
+ * fail on a re-added `encryptPassword`, and both fail again if the hook is ever dropped from
+ * marketplace-common — which is the other way this can break, and the one that would store a plaintext
+ * password rather than an unusable hash.
+ ****************************************************************************************/
+
+/** Registrations written through the real models, drained in afterAll alongside the raw-driver seeds. */
+const registeredIds: Array<{ collection: 'user' | 'shopOwner'; _id: mongoose.Types.ObjectId }> = []
+
+/** Both functions take the caller's session and expect to be inside its transaction, as the resolvers run them. */
+async function inTransaction(run: (session: mongoose.ClientSession) => Promise<unknown>) {
+	const session = await mongoose.startSession()
+
+	try {
+		await session.withTransaction(() => run(session))
+	} finally {
+		await session.endSession()
+	}
+}
+
+/**
+ * Reads back the stored credential of a registration, by the only handle the caller has: the address.
+ *
+ * `login.email` is deterministically encrypted, so the filter has to carry the ciphertext the write
+ * produced — the same trick the CSFLE describe above uses in the other direction. The read stays on the
+ * raw driver deliberately: a model read would decrypt, and this assertion is about what is *on disk*.
+ */
+async function storedPassword(collection: 'user' | 'shopOwner', email: string, keyAltName: string) {
+	const stored = await db()
+		.collection(collection)
+		.findOne({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, keyAltName) })
+
+	if (!stored) throw new Error(`registration wrote no ${collection} document for ${email}`)
+	registeredIds.push({ collection, _id: stored._id })
+
+	return stored.login.password as string
+}
+
+describe('registration writes a credential the login can verify', () => {
+	const PLAINTEXT = 'itest-registration-plaintext'
+
+	it('registerNewUser stores one bcrypt of the plaintext, not two', async () => {
+		const email = itestEmail()
+
+		await inTransaction((session) => registerNewUser(email, PLAINTEXT, session))
+
+		const password = await storedPassword('user', email, KEY_ALT_NAME_USER)
+
+		expect(password).toMatch(/^\$2[aby]\$/)
+		expect(password).not.toBe(PLAINTEXT)
+		await expect(bcrypt.verify(PLAINTEXT, password)).resolves.toBe(true)
+	})
+
+	it('registerNewShopOwner stores one bcrypt of the plaintext, not two', async () => {
+		const email = itestEmail()
+
+		await inTransaction((session) => registerNewShopOwner(email, PLAINTEXT, session))
+
+		const password = await storedPassword('shopOwner', email, KEY_ALT_NAME_SHOP_OWNER)
+
+		expect(password).toMatch(/^\$2[aby]\$/)
+		expect(password).not.toBe(PLAINTEXT)
+		await expect(bcrypt.verify(PLAINTEXT, password)).resolves.toBe(true)
 	})
 })
 

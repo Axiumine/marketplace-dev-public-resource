@@ -16,7 +16,20 @@ const setupFieldEncryption = vi.fn()
 const bodyParserOptions: unknown[] = []
 const apolloServerOptions: { pluginCount: number | undefined; csrfPrevention: unknown }[] = []
 
+// The one middleware in the dispatch chain that cannot be driven for real without a socket and a
+// live schema execution. Mocked to a recorder so the Apollo arm of the dispatch below can be
+// exercised at all: what the arm owes anyone is that the endpoint path reaches Apollo, carrying this
+// request's own ctx as the GraphQL context — and both halves are asserted from what lands here.
+const apolloKoaMiddleware = vi.fn()
+const apolloKoaOptions: { context: () => Promise<unknown> }[] = []
+
 vi.mock('@sentry/node', () => ({ captureException, captureMessage }))
+vi.mock('@as-integrations/koa', () => ({
+	koaMiddleware: (_server: unknown, options: { context: () => Promise<unknown> }) => {
+		apolloKoaOptions.push(options)
+		return apolloKoaMiddleware
+	}
+}))
 // The datasources are imported transitively by the router and the reset-password flow; bare stubs
 // are enough because the unit project never really connects — http.Server.prototype.listen is
 // stubbed too, below, so the success path can run without opening a socket.
@@ -59,6 +72,7 @@ vi.mock('@apollo/server', async (importOriginal) => {
 })
 
 const {
+	ENDPOINT,
 	REQUIRED_ENV_VARS,
 	checkRequiredEnv,
 	buildValidationRules,
@@ -199,6 +213,8 @@ describe('createServer', () => {
 	beforeEach(() => {
 		bodyParserOptions.length = 0
 		apolloServerOptions.length = 0
+		apolloKoaOptions.length = 0
+		apolloKoaMiddleware.mockClear()
 	})
 
 	it('parses json/form/text bodies and hardens Apollo with the drain plugin and csrfPrevention', async () => {
@@ -247,6 +263,35 @@ describe('createServer', () => {
 			await dispatch(other as never, otherNext)
 
 			expect(otherNext).toHaveBeenCalledOnce()
+		} finally {
+			await apolloServer.stop()
+		}
+	})
+
+	// ⚠️ The arm that carries every GraphQL request, and the one no unit test drove until now: Stryker
+	// reported the whole `if` body as NoCoverage and killed nothing when it flipped `ctx.path === ENDPOINT`
+	// to `false`. A service that answers no GraphQL at all is not a subtle regression, and it was one
+	// mutant away from shipping unnoticed — the integration suite catches it, but the mutation run does
+	// not include the integration project.
+	it('hands a request on the service’s own endpoint to Apollo, with this ctx as the GraphQL context', async () => {
+		const { app, apolloServer } = await createServer()
+		const dispatch = app.middleware.at(-1)!
+
+		try {
+			const graphql = { path: ENDPOINT }
+			const graphqlNext = vi.fn()
+			await dispatch(graphql as never, graphqlNext)
+
+			// The dispatch returns Apollo's middleware rather than awaiting it and falling through, so
+			// `next` is handed over, not called here: Apollo decides whether the stack continues.
+			expect(apolloKoaMiddleware).toHaveBeenCalledExactlyOnceWith(graphql, graphqlNext)
+			expect(graphqlNext).not.toHaveBeenCalled()
+
+			// ⚠️ `context()` must answer *this* request's ctx. Returning anything else — a stale closure,
+			// an empty object — compiles, serves, and leaves every resolver reading someone else's
+			// session: `ctx.state.user` is how all three tiers are identified on this platform.
+			expect(apolloKoaOptions).toHaveLength(1)
+			await expect(apolloKoaOptions[0].context()).resolves.toBe(graphql)
 		} finally {
 			await apolloServer.stop()
 		}

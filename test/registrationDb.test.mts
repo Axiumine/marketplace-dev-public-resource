@@ -1,3 +1,9 @@
+// noinspection DuplicatedCode -- what this shares with shopOwnerRegistrationDb.test.mts is the mock
+// declarations: the imports, the `vi.fn()` handles and the `vi.mock` factories that close over them. None of
+// it can move. `vi.mock` is hoisted to the top of the file that declares it, so a handle imported from a
+// shared module is not yet bound when its own factory runs — the mock would install `undefined`. The tests
+// underneath, which is what the two suites actually assert, run against different collections.
+
 import { ClientSession, Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -1,3 +1,10 @@
+// noinspection DuplicatedCode -- what this shares with userMutations.test.mts is the mock declarations: the
+// imports, the `vi.fn()` handles, the `vi.hoisted` session block and the `vi.mock` factories that close over
+// them. None of it can move. `vi.mock` and `vi.hoisted` are hoisted to the top of the file that declares
+// them, so a handle imported from a shared module is not yet bound when its own factory runs — the mock
+// would install `undefined`. The tests underneath, which is what the two suites actually assert, differ:
+// one registers a shop owner, the other a user, against different collections and different mail flows.
+
 import { GraphQLBoolean, GraphQLNonNull, GraphQLString } from 'graphql'
 import { Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

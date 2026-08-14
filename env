@@ -85,8 +85,6 @@ NODE_ENV=development
 
 
 UPLOAD_DIR=/media/xxx
-MAX_IMAGE_MB=20
-MAX_VIDEO_MB=100
 
 # ── Transactional email (SocketLabs, via @axiumine/koa-utils) ─────────────────
 #

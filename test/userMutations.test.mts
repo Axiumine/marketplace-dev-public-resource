@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const guardPublicWrite = vi.fn()
 const sendUserVerifyEmail = vi.fn()
 const setEmailHashUser = vi.fn(async () => 'hash-reissued')
+const purgeClosedUser = vi.fn()
 const registerNewUser = vi.fn(async () => 'hash-fresh')
 const restartUserRegistration = vi.fn()
 const userForRegistration = vi.fn()
@@ -50,6 +51,7 @@ vi.mock('@axiumine/koa-utils/email/SocketLabsLib', () => ({
 vi.mock('../src/lib/access/guardPublicWrite.mts', () => ({ guardPublicWrite }))
 vi.mock('../src/lib/access/sendUserVerifyEmail.mts', () => ({ sendUserVerifyEmail }))
 vi.mock('../src/lib/access/verifyEmailFlowUser.mts', () => ({ setEmailHashUser }))
+vi.mock('../src/lib/db/purgeClosedUser.mts', () => ({ purgeClosedUser }))
 vi.mock('../src/lib/db/registerNewUser.mts', () => ({ registerNewUser }))
 vi.mock('../src/lib/db/restartUserRegistration.mts', () => ({ restartUserRegistration }))
 vi.mock('../src/lib/db/userForRegistration.mts', () => ({ userForRegistration }))
@@ -181,8 +183,8 @@ describe('userRegister — the guard', () => {
 	})
 })
 
-describe('userRegister — the three outcomes', () => {
-	// ⚠️ **All three answer `true`, and that is the security property rather than laziness.** A mutation
+describe('userRegister — the four outcomes', () => {
+	// ⚠️ **All four answer `true`, and that is the security property rather than laziness.** A mutation
 	// that throws 409 for a taken address is an account-enumeration oracle: anyone can ask it, one
 	// address at a time, who has an account here. The outcomes are distinguishable only in the inbox.
 	it('writes the document and sends the link when the address is free', async () => {
@@ -193,6 +195,7 @@ describe('userRegister — the three outcomes', () => {
 		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-fresh')
 		expect(restartUserRegistration).not.toHaveBeenCalled()
 		expect(emailAlreadyValid).not.toHaveBeenCalled()
+		expect(purgeClosedUser).not.toHaveBeenCalled()
 	})
 
 	// ⚠️ A verified document is somebody's account: nothing is written to it — not the password, not the hash.
@@ -208,6 +211,55 @@ describe('userRegister — the three outcomes', () => {
 		expect(restartUserRegistration).not.toHaveBeenCalled()
 		expect(setEmailHashUser).not.toHaveBeenCalled()
 		expect(sendUserVerifyEmail).not.toHaveBeenCalled()
+		expect(purgeClosedUser).not.toHaveBeenCalled()
+	})
+
+	// ⚠️ **A closed account is destroyed and the address registered fresh** (ADR-011 §Amendment
+	// 2026-08-26). The document was already condemned — `user.deleted_ttl` removes it thirty days after
+	// `userDel` stamped it — so this only brings the removal forward to the request that needs the
+	// address, which makes the erasure earlier than the retention rule requires rather than later. Before
+	// it existed, closing an account burned its address for a month and answered "you are already
+	// registered" the whole time, about an account nobody could log into.
+	it('destroys a closed account and registers the address again from scratch', async () => {
+		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true }, deleted: new Date() })
+
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
+
+		expect(purgeClosedUser).toHaveBeenCalledExactlyOnceWith(session, userId)
+		expect(registerNewUser).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret', session)
+		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-fresh')
+		expect(emailAlreadyValid).not.toHaveBeenCalled()
+		expect(restartUserRegistration).not.toHaveBeenCalled()
+		expect(setEmailHashUser).not.toHaveBeenCalled()
+	})
+
+	// ⚠️ **The old document has to be gone before the new one is written, and the order is not stylistic.**
+	// `login.email_unique` carries no `partialFilterExpression`, so both documents would hold the same
+	// address at once: inside the transaction the insert fails on the index, the whole registration aborts,
+	// and the customer is told nothing while nothing at all happens.
+	it('deletes before it inserts, or the unique index refuses the new document', async () => {
+		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true }, deleted: new Date() })
+
+		await userRegister.resolve(null, registerArgs)
+
+		expect(purgeClosedUser.mock.invocationCallOrder[0]).toBeLessThan(registerNewUser.mock.invocationCallOrder[0])
+		expect(registerNewUser.mock.invocationCallOrder[0]).toBeLessThan(sendUserVerifyEmail.mock.invocationCallOrder[0])
+	})
+
+	// ⚠️ **Both halves of the condition are load-bearing, and the branch is ordered before the verified one
+	// on purpose.** A closed document is verified too, so the two conditions overlap: the other order makes
+	// this branch unreachable. `deleted` alone is not enough either — an unverified stamp is an abandoned
+	// attempt, and destroying it would answer a mistyped password with a hard delete.
+	it.each([
+		['live and verified', { _id: userId, emailVerify: { valid: true } }],
+		['stamped but never verified', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }],
+		['stamped with no emailVerify at all', { _id: userId, deleted: new Date() }]
+	])('leaves %s well alone — only a verified stamp is a closed account', async (_desc, existing) => {
+		userForRegistration.mockResolvedValueOnce(existing)
+
+		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
+
+		expect(purgeClosedUser).not.toHaveBeenCalled()
 	})
 
 	// An unfinished attempt — possibly with a mistyped password, possibly tombstoned by the three-day

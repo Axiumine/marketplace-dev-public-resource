@@ -6,6 +6,7 @@ import { tryCatchRethrow } from '@axiumine/koa-utils/lib/tryCatchRethrow'
 import { guardPublicWrite } from '@lib/access/guardPublicWrite.mjs'
 import { sendUserVerifyEmail } from '@lib/access/sendUserVerifyEmail.mjs'
 import { setEmailHashUser } from '@lib/access/verifyEmailFlowUser.mjs'
+import { purgeClosedUser } from '@lib/db/purgeClosedUser.mjs'
 import { registerNewUser } from '@lib/db/registerNewUser.mjs'
 import { restartUserRegistration } from '@lib/db/restartUserRegistration.mjs'
 import { userForRegistration } from '@lib/db/userForRegistration.mjs'
@@ -28,10 +29,21 @@ export interface IUserRegisterArgs {
  * ⚠️ **It answers `true` whatever happened, and that is the security property, not laziness.**
  * koa-utils' `signUp` throws a 409 when the address is taken, which turns this mutation into an
  * account-enumeration oracle: anybody can ask it, one address at a time, who has an account here. The
- * three outcomes are therefore indistinguishable to the caller and distinguishable only in the inbox —
- * a new registration and a restarted one get an activation link, an address that already has a
- * verified account gets the "you are already registered" mail koa-utils sends for exactly this case.
- * The person who owns the address learns everything; the person who does not learns nothing.
+ * four outcomes are therefore indistinguishable to the caller and distinguishable only in the inbox —
+ * a new registration, a restarted one and a reopened one all get an activation link, and an address
+ * that already has a *live* verified account gets the "you are already registered" mail koa-utils sends
+ * for exactly this case. The person who owns the address learns everything; the person who does not
+ * learns nothing.
+ *
+ * ⚠️ **A closed account is destroyed here and registered again from scratch — the platform's one
+ * application hard delete** (ADR-011 §Amendment 2026-08-26). That document was already condemned:
+ * `user.deleted_ttl` removes it thirty days after `userDel` stamped it, and this only brings the
+ * removal forward to the request that needs the address. So the wait to register again drops from a
+ * month to nothing, and the erasure happens *earlier* than the retention rule requires rather than
+ * later. Emptying the old document in place instead of destroying it was considered and rejected;
+ * `purgeClosedUser` carries that argument. The account that replaces it starts as any other new one
+ * does — new `_id`, no personal data, no addresses, unverified — so nothing is inherited and nothing
+ * is reachable until the activation link is opened in the mailbox.
  *
  * ⚠️ **`repeatPassword` is checked here as well as in the form.** The frontend check exists to give
  * the typist a message before they submit; it is not a control, because nothing stops a client from
@@ -78,7 +90,17 @@ export const userRegister = {
 					return
 				}
 
-				// A verified document is somebody's account. Nothing is written to it — not the password, not the
+				// A closed account, kept only by the retention clock. Destroy it and register the address fresh
+				// rather than answering "already registered" for a month about an account nobody can log into.
+				// Ordered before the verified branch on purpose: a closed document is verified too, so the two
+				// conditions overlap and the wrong order would make this branch unreachable.
+				if (existing.deleted && existing.emailVerify?.valid) {
+					await purgeClosedUser(session, existing._id)
+					await sendUserVerifyEmail(uEmail, await registerNewUser(uEmail, password, session))
+					return
+				}
+
+				// A live verified document is somebody's account. Nothing is written to it — not the password, not the
 				// hash — and the mail says so, which is the one message that helps its owner (they forgot
 				// they registered) without telling anyone else the address is taken.
 				if (existing.emailVerify?.valid) {

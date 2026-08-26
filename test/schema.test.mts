@@ -98,7 +98,7 @@ describe('QueriesPublic', () => {
 	// The full field list, in declaration order, and asserted exhaustively on purpose: this service has
 	// no auth middleware, so every name below is reachable unauthenticated by anyone on the internet.
 	// A `toContain` here would let a field be added to the public surface without a test changing.
-	it('mounts the demo pair and the eight public reads as its only fields', () => {
+	it('mounts the demo pair and the nine public reads as its only fields', () => {
 		expect(QueriesPublic.name).toBe('QueriesPublic')
 		expect(Object.keys(QueriesPublic.getFields())).toEqual([
 			'publicHelloNoArgs',
@@ -109,7 +109,8 @@ describe('QueriesPublic', () => {
 			'items',
 			'itemBySlug',
 			'itemCategories',
-			'search',
+			'searchCompanies',
+			'searchItems',
 			'sitemapEntries'
 		])
 	})

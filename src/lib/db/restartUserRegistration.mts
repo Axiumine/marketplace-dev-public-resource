@@ -19,6 +19,13 @@ import { ClientSession, Types } from 'mongoose'
  * against a second registration. Without clearing it the address would be permanently unusable by the
  * person who chose it, which is not what a three-day timeout is supposed to mean.
  *
+ * ⚠️ **The stamp this clears is always an abandoned attempt, never a closed account.** Both spell
+ * themselves `deleted` on this collection, and only `emailVerify.valid` separates them — a closed
+ * account is verified, and `userRegister` branches on that pair before it ever reaches this call, so
+ * what arrives here has never been an account. The distinction is not cosmetic: clearing the stamp on a
+ * closed account would rearm `user.deleted_ttl` from an unauthenticated request, and one registration
+ * attempt every thirty days would then keep a document the retention rule condemned alive forever.
+ *
  * The activation hash is *not* minted here — `setEmailHashUser` does that, so the three `emailVerify`
  * paths are written in exactly one place and cannot drift from the flow's paths map.
  */

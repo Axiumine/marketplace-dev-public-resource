@@ -4,7 +4,7 @@
 // shared module is not yet bound when its own factory runs — the mock would install `undefined`. The tests
 // underneath, which is what the two suites actually assert, run against different collections.
 
-import { ClientSession, Types } from 'mongoose'
+import { ClientSession, trusted, Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const emailHash = vi.fn(() => 'hash-from-koa-utils')
@@ -12,13 +12,15 @@ const encryptPassword = vi.fn(async (password: string) => `bcrypt(${password})`)
 const userCreate = vi.fn()
 const userUpdateOne = vi.fn()
 const userFindOne = vi.fn()
+const userDeleteOne = vi.fn()
 
 vi.mock('@axiumine/koa-utils/lib/emailHash', () => ({ emailHash }))
 vi.mock('@axiumine/koa-utils/lib/encryptPassword', () => ({ encryptPassword }))
 vi.mock('@axiumine/marketplace-common/models/MongoDB/User', () => ({
-	User: { create: userCreate, updateOne: userUpdateOne, findOne: userFindOne }
+	User: { create: userCreate, deleteOne: userDeleteOne, updateOne: userUpdateOne, findOne: userFindOne }
 }))
 
+const { purgeClosedUser } = await import('../src/lib/db/purgeClosedUser.mts')
 const { registerNewUser } = await import('../src/lib/db/registerNewUser.mts')
 const { restartUserRegistration } = await import('../src/lib/db/restartUserRegistration.mts')
 const { userForRegistration } = await import('../src/lib/db/userForRegistration.mts')
@@ -159,6 +161,43 @@ describe('restartUserRegistration', () => {
 	})
 })
 
+describe('purgeClosedUser', () => {
+	// ⚠️ **The one application hard delete on this platform** (ADR-011 §Amendment 2026-08-26). Everything
+	// else stamps `deleted` and keeps the document. A closed customer is the exception because nothing
+	// references `user` and its address is a credential rather than a legal identity — and because the
+	// document is already condemned: `user.deleted_ttl` removes it thirty days after `userDel` stamped it,
+	// so this only moves the removal forward to the request that needs the address back.
+	it('removes the document outright, inside the caller’s transaction', async () => {
+		await purgeClosedUser(session, userId)
+
+		expect(userDeleteOne).toHaveBeenCalledExactlyOnceWith({ _id: userId, deleted: trusted({ $exists: true }) }, { session })
+	})
+
+	// ⚠️ **`deleted` is in the filter and not merely checked by the caller, and that is the whole safety
+	// argument.** `userRegister` has already branched on it, so this clause can never fail there — which is
+	// the point: this is the only write in the repo nothing can undo, and the guard that matters is the one
+	// a future caller cannot skip by misreading a branch. A live account reaching here deletes nothing and
+	// the transaction then fails loudly on `login.email_unique` instead of destroying an account quietly.
+	it('cannot reach a live document — the closed clause is part of the filter', async () => {
+		await purgeClosedUser(session, userId)
+
+		expect(Object.keys(userDeleteOne.mock.calls[0][0]).sort()).toEqual(['_id', 'deleted'])
+		expect(userDeleteOne.mock.calls[0][0].deleted).toEqual(trusted({ $exists: true }))
+	})
+
+	// ⚠️ **The `trusted()` wrapper is asserted, not just the shape.** `sanitizeFilter` is on process-wide,
+	// so a bare `{ $exists: true }` is silently rewritten to `{ $eq: { $exists: true } }` — a search for a
+	// field holding that literal object, which matches nothing. The delete would remove no document and the
+	// registration behind it would then fail on the unique index: safe, and still broken. `toEqual` compares
+	// symbol properties, so the two assertions above both fail if the wrapper is dropped.
+
+	it('reads nothing back — the transaction is what makes the pair atomic', async () => {
+		userDeleteOne.mockResolvedValueOnce({ acknowledged: true, deletedCount: 1 })
+
+		await expect(purgeClosedUser(session, userId)).resolves.toBeUndefined()
+	})
+})
+
 describe('userForRegistration', () => {
 	const chain = (result: unknown) => {
 		const lean = vi.fn().mockResolvedValue(result)
@@ -169,7 +208,9 @@ describe('userForRegistration', () => {
 	// ⚠️ **No `deleted` filter, deliberately.** `login.email` carries a plain unique index with no
 	// `partialFilterExpression`, so a tombstoned document still occupies its address: a lookup behind a
 	// liveness filter would report "free", and the `create` behind it would then fail on the *index*
-	// rather than on a branch anyone can read. The caller decides what a tombstone means.
+	// rather than on a branch anyone can read. The caller decides what a tombstone means — and it needs
+	// `emailVerify.valid` beside it to do so, since an unverified stamp is an abandoned attempt and a
+	// verified one is a closed account.
 	it('seeks the address alone, tombstones included', async () => {
 		userFindOne.mockReturnValueOnce(chain(null))
 

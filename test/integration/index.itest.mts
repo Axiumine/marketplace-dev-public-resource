@@ -27,6 +27,7 @@ dotenv.config()
 
 import { ENDPOINT, start } from '../../src/index.mts'
 import { VERIFY_EMAIL_PATHS } from '../../src/lib/access/verifyEmailFlow.mts'
+import { purgeClosedUser } from '../../src/lib/db/purgeClosedUser.mts'
 import { registerNewShopOwner } from '../../src/lib/db/registerNewShopOwner.mts'
 import { registerNewUser } from '../../src/lib/db/registerNewUser.mts'
 
@@ -741,6 +742,72 @@ describe('registration writes a credential the login can verify', () => {
 		expect(password).toMatch(/^\$2[aby]\$/)
 		expect(password).not.toBe(PLAINTEXT)
 		await expect(bcrypt.verify(PLAINTEXT, password)).resolves.toBe(true)
+	})
+})
+
+/**
+ * The one claim in this change that no mock can make: that MongoDB itself lets the same address be
+ * deleted and re-inserted inside one transaction, past a unique index with no `partialFilterExpression`.
+ * The unit suite proves the resolver calls the two in that order; only a real index proves the order is
+ * enough.
+ */
+describe('a closed account is destroyed and its address registered again', () => {
+	const OLD_PASSWORD = 'itest-closed-account-old'
+	const NEW_PASSWORD = 'itest-closed-account-new'
+
+	/** `login.email` is deterministically encrypted, so the ciphertext is the only handle onto a document. */
+	async function byEmail(email: string) {
+		return await db()
+			.collection('user')
+			.find({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER) })
+			.toArray()
+	}
+
+	// ⚠️ **Both writes are in one transaction, and the insert would be refused without the delete in front
+	// of it.** `login.email_unique` carries no `partialFilterExpression`, so the closed document holds the
+	// address until it is gone — which is the whole reason closing an account used to burn its address for
+	// the thirty days of the retention window.
+	it('replaces the document rather than reviving it, past the unique index', async () => {
+		const email = itestEmail()
+
+		await inTransaction((session) => registerNewUser(email, OLD_PASSWORD, session))
+
+		const [closed] = await byEmail(email)
+		registeredIds.push({ collection: 'user', _id: closed._id })
+
+		await db()
+			.collection('user')
+			.updateOne({ _id: closed._id }, { $set: { 'emailVerify.valid': true, deleted: new Date() } })
+
+		await inTransaction(async (session) => {
+			await purgeClosedUser(session, closed._id)
+			await registerNewUser(email, NEW_PASSWORD, session)
+		})
+
+		const after = await byEmail(email)
+		for (const doc of after) registeredIds.push({ collection: 'user', _id: doc._id })
+
+		expect(after).toHaveLength(1)
+		expect(after[0]._id.equals(closed._id)).toBe(false)
+		expect(after[0]).not.toHaveProperty('deleted')
+		expect(after[0].emailVerify.valid).toBe(false)
+		await expect(bcrypt.verify(NEW_PASSWORD, after[0].login.password as string)).resolves.toBe(true)
+	})
+
+	// ⚠️ **The `deleted` clause is part of the filter, and this is what proves it.** `userRegister` has
+	// already branched on it, so the clause can never fail there — it is there for the caller that does not
+	// exist yet. Against a real collection, a live document handed to this function survives.
+	it('leaves a live document standing, however it is called', async () => {
+		const email = itestEmail()
+
+		await inTransaction((session) => registerNewUser(email, OLD_PASSWORD, session))
+
+		const [live] = await byEmail(email)
+		registeredIds.push({ collection: 'user', _id: live._id })
+
+		await inTransaction((session) => purgeClosedUser(session, live._id))
+
+		await expect(db().collection('user').countDocuments({ _id: live._id })).resolves.toBe(1)
 	})
 })
 

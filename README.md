@@ -24,6 +24,20 @@ sessions, and this service only serves what needs no session at all.
 | `userResetPwd`, `userUpdatePwd` | the reset flow's two halves |
 | `publicMutNoArgs`, `publicMutArgs` | liveness probes |
 
+⚠️ **`userRegister` has four outcomes and answers `true` for every one of them.** A 409 on a taken
+address would make it an account-enumeration oracle, so the outcomes are told apart only in the inbox: a
+new registration, a restarted attempt and a *reopened* one all get an activation link, while an address
+that already has a **live** verified account gets the "you are already registered" mail.
+
+⚠️ **The fourth outcome is the one to know about: a closed account is hard-deleted here.** A document
+`userDel` stamped is still verified, so before this existed the mutation answered "already registered"
+for thirty days about an account nobody could log into. It is now destroyed and the address registered
+from scratch — the platform's **one application hard delete** (ADR-011 §Amendment 2026-08-26). Nothing
+is being invented: `user.deleted_ttl` already removes that document thirty days after the stamp, and
+this brings the removal forward to the request that needs the address, which makes the erasure earlier
+than the retention rule requires rather than later. The new account is new in every sense — new `_id`,
+no personal data, no addresses, unverified until the link is opened.
+
 ## The one service with HTTP routes of its own
 
 Every other service is GraphQL and nothing else. This one also mounts three `@koa/router` routes, because

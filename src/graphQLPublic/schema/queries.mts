@@ -8,7 +8,7 @@ import { itemCategories } from './queries/itemCategories.mjs'
 import { items } from './queries/items.mjs'
 import { publicHelloArgs } from './queries/publicHelloArgs.mjs'
 import { publicHelloNoArgs } from './queries/publicHelloNoArgs.mjs'
-import { search } from './queries/search.mjs'
+import { searchCompanies, searchItems } from './queries/search.mjs'
 import { sitemapEntries } from './queries/sitemapEntries.mjs'
 
 /**
@@ -22,9 +22,10 @@ import { sitemapEntries } from './queries/sitemapEntries.mjs'
  * convenience. Second, every argument that can grow the server's work — `limit`, `offset`, `q`,
  * `radiusMeters`, the bbox size — is bounded in the resolver, because nothing upstream will bound it.
  *
- * The eight reads split cleanly by consumer: `companies` / `companyBySlug` / `items` / `itemBySlug` /
- * `itemCategories` serve the SSR routes and are the crawlable surface; `companiesNearby` and `search`
- * serve client-side islands (map, search box); `sitemapEntries` serves the sitemap generator alone.
+ * The nine reads split cleanly by consumer: `companies` / `companyBySlug` / `items` / `itemBySlug` /
+ * `itemCategories` serve the SSR routes and are the crawlable surface; `companiesNearby` serves the map
+ * island and `searchCompanies` / `searchItems` serve the search page — one of the two per request, the
+ * visitor picks which; `sitemapEntries` serves the sitemap generator alone.
  * The two demo queries predate all of it and stay as the smoke test that the endpoint is mounted.
  */
 const QueriesPublic = new GraphQLObjectType({
@@ -38,7 +39,8 @@ const QueriesPublic = new GraphQLObjectType({
 		items,
 		itemBySlug,
 		itemCategories,
-		search,
+		searchCompanies,
+		searchItems,
 		sitemapEntries
 	}
 })

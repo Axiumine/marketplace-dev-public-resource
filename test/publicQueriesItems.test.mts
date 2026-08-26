@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { chain, expectTombstoneFilter, live, TRUSTED } from './support/queryChain.mts'
 
 const companyFind = vi.fn()
+const companyCountDocuments = vi.fn(async () => 0)
 const itemFind = vi.fn()
 const itemFindOne = vi.fn()
 const itemCountDocuments = vi.fn(async () => 0)
@@ -13,7 +14,9 @@ const itemCategoryFind = vi.fn()
 const liveCompanyBySlug = vi.fn()
 const liveItemsAcrossShops = vi.fn(async () => [] as unknown[])
 
-vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({ Company: { find: companyFind } }))
+vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({
+	Company: { find: companyFind, countDocuments: companyCountDocuments }
+}))
 vi.mock('@axiumine/marketplace-common/models/MongoDB/Item', () => ({
 	Item: { find: itemFind, findOne: itemFindOne, countDocuments: itemCountDocuments, aggregate: itemAggregate }
 }))
@@ -39,18 +42,20 @@ const item = (n: number) => ({ _id: new Types.ObjectId(), idCategory, name: `Ite
 let GraphQLSitemapKind: (typeof import('../src/graphQLPublic/schema/types/GraphQLSitemapEntry.mts'))['GraphQLSitemapKind']
 let items: (typeof import('../src/graphQLPublic/schema/queries/items.mts'))['items']
 let itemBySlug: (typeof import('../src/graphQLPublic/schema/queries/itemBySlug.mts'))['itemBySlug']
-let search: (typeof import('../src/graphQLPublic/schema/queries/search.mts'))['search']
+let searchCompanies: (typeof import('../src/graphQLPublic/schema/queries/search.mts'))['searchCompanies']
+let searchItems: (typeof import('../src/graphQLPublic/schema/queries/search.mts'))['searchItems']
 let sitemapEntries: (typeof import('../src/graphQLPublic/schema/queries/sitemapEntries.mts'))['sitemapEntries']
 
 beforeEach(async () => {
 	vi.clearAllMocks()
 	itemCountDocuments.mockResolvedValue(0)
+	companyCountDocuments.mockResolvedValue(0)
 	itemAggregate.mockResolvedValue([])
 	liveItemsAcrossShops.mockResolvedValue([])
 	liveCompanyBySlug.mockResolvedValue(company)
 	;({ items } = await import('../src/graphQLPublic/schema/queries/items.mts'))
 	;({ itemBySlug } = await import('../src/graphQLPublic/schema/queries/itemBySlug.mts'))
-	;({ search } = await import('../src/graphQLPublic/schema/queries/search.mts'))
+	;({ searchCompanies, searchItems } = await import('../src/graphQLPublic/schema/queries/search.mts'))
 	;({ sitemapEntries } = await import('../src/graphQLPublic/schema/queries/sitemapEntries.mts'))
 	;({ GraphQLSitemapKind } = await import('../src/graphQLPublic/schema/types/GraphQLSitemapEntry.mts'))
 })
@@ -292,27 +297,37 @@ describe('items', () => {
 	})
 })
 
-describe('search', () => {
-	const resolveSearch = async (args: Record<string, unknown> = {}, docs: unknown[] = []) => {
-		const query = chain(docs)
-		companyFind.mockReturnValueOnce(query)
+describe('search, the half both fields share', () => {
+	// `assertQuery` is one function behind two fields, and these run against both: a `q` that one field
+	// refuses and the other accepts is a search page whose two tabs disagree about whether what was
+	// typed is a valid query at all.
+	const fieldOf = (name: string) => (name === 'searchCompanies' ? searchCompanies : searchItems)
 
-		return { result: await search.resolve(null, { q: 'sneaker', ...args }), query }
-	}
-
-	it('answers a non-nullable result and takes a query, a point and a limit', () => {
-		expect(search.description).toBe('Full-text search over published companies and items, optionally within a radius')
-		expect(search.type).toBeInstanceOf(GraphQLNonNull)
-		expect(Object.keys(search.args)).toEqual(['q', 'near', 'limit'])
-		expect(search.args.q.type).toBeInstanceOf(GraphQLNonNull)
+	beforeEach(() => {
+		companyFind.mockReturnValue(chain([]))
 	})
 
 	it.each([
-		['an empty query', ''],
-		['a query of spaces', '   '],
-		['a query of tabs and newlines', '\t\n ']
-	])('refuses %s', async (_desc, q) => {
-		await expect(search.resolve(null, { q })).rejects.toThrow('q must not be empty')
+		['searchCompanies', 'Full-text search over published companies, optionally within a radius'],
+		['searchItems', 'Full-text search over published items, optionally within a radius of their shop']
+	])('%s answers a non-nullable page and takes q, near, limit and offset', (name, description) => {
+		const field = fieldOf(name)
+
+		expect(field.description).toBe(description)
+		expect(field.type).toBeInstanceOf(GraphQLNonNull)
+		expect(Object.keys(field.args)).toEqual(['q', 'near', 'limit', 'offset'])
+		expect(field.args.q.type).toBeInstanceOf(GraphQLNonNull)
+	})
+
+	it.each([
+		['searchCompanies', 'an empty query', ''],
+		['searchCompanies', 'a query of spaces', '   '],
+		['searchCompanies', 'a query of tabs and newlines', '\t\n '],
+		['searchItems', 'an empty query', ''],
+		['searchItems', 'a query of spaces', '   '],
+		['searchItems', 'a query of tabs and newlines', '\t\n ']
+	])('%s refuses %s', async (name, _desc, q) => {
+		await expect(fieldOf(name).resolve(null, { q })).rejects.toThrow('q must not be empty')
 
 		expect(companyFind).not.toHaveBeenCalled()
 		expect(liveItemsAcrossShops).not.toHaveBeenCalled()
@@ -322,56 +337,56 @@ describe('search', () => {
 	// a separate index traversal whose postings are then intersected — so an unbounded `q` is unbounded
 	// work requested by an anonymous caller in one small request. Silently searching for a prefix of what
 	// was typed would return results the user cannot explain.
-	it('accepts a query at the ceiling and refuses one character more', async () => {
-		await expect(resolveSearch({ q: 'a'.repeat(120) })).resolves.toBeDefined()
-		await expect(search.resolve(null, { q: 'a'.repeat(121) })).rejects.toThrow('q must not exceed 120 characters')
-	})
+	it.each(['searchCompanies', 'searchItems'])(
+		'%s accepts a query at the ceiling and refuses one character more',
+		async (name) => {
+			const field = fieldOf(name)
 
-	it('searches for the trimmed query, in both collections', async () => {
-		await resolveSearch({ q: '  sneaker  ' })
+			await expect(field.resolve(null, { q: 'a'.repeat(120) })).resolves.toBeDefined()
+			await expect(field.resolve(null, { q: 'a'.repeat(121) })).rejects.toThrow('q must not exceed 120 characters')
+		}
+	)
+
+	it.each(['searchCompanies', 'searchItems'])('%s validates the point before it searches anything', async (name) => {
+		await expect(fieldOf(name).resolve(null, { q: 'sneaker', near: { lng: 999, lat: 0, radiusMeters: 1 } })).rejects.toThrow(
+			'near.lng must be a longitude between -180 and 180'
+		)
+
+		expect(companyFind).not.toHaveBeenCalled()
+		expect(liveItemsAcrossShops).not.toHaveBeenCalled()
+	})
+})
+
+describe('searchCompanies', () => {
+	const resolveSearch = async (args: Record<string, unknown> = {}, docs: unknown[] = []) => {
+		const query = chain(docs)
+		companyFind.mockReturnValueOnce(query)
+
+		return { result: await searchCompanies.resolve(null, { q: 'sneaker', ...args }), query }
+	}
+
+	it('searches the trimmed query, ranked by the collection’s own relevance', async () => {
+		const shops = [{ _id: idCompany, publicName: 'Mark Boutique' }]
+		const { result, query } = await resolveSearch({ q: '  sneaker  ' }, shops)
 
 		expect(companyFind.mock.calls[0][0].$text.$search).toBe('sneaker')
-		expect(liveItemsAcrossShops.mock.calls[0][0]).toEqual({ $text: { $search: 'sneaker' } })
-	})
-
-	// ⚠️ `trusted()` on the `Query` filter, nothing in the pipeline. `sanitizeFilter` would rewrite both
-	// `$text` and the `$geoWithin` into equality tests against literal objects — filters that match
-	// nothing, silently, and read as "no results". Aggregation stages never pass through it.
-	it('tags the query filter and leaves the pipeline’s match plain', async () => {
-		await resolveSearch()
-
-		expect(companyFind.mock.calls[0][0].$text[TRUSTED]).toBe(true)
-		expect(companyFind.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
-		expect(Object.getOwnPropertySymbols(liveItemsAcrossShops.mock.calls[0][0].$text)).toHaveLength(0)
-	})
-
-	// Two collections, two text indexes, two result lists — never interleaved. `textScore` is computed
-	// against each collection's own term statistics and field weights, so a shop's 1.4 and an item's 1.1
-	// have never been compared, and merging them produces an order that looks authoritative and is
-	// arbitrary. The score itself is sorted on and never projected: the order is the answer.
-	it('ranks each collection by its own relevance and returns them apart', async () => {
-		const shops = [{ _id: idCompany, publicName: 'Mark Boutique' }]
-		const hits = [item(1)]
-		liveItemsAcrossShops.mockResolvedValueOnce(hits)
-
-		const { result, query } = await resolveSearch({ limit: 10 }, shops)
-
-		expect(result).toEqual({ companies: shops, items: hits })
-		expect(query.sort).toHaveBeenCalledExactlyOnceWith({ score: { $meta: 'textScore' } })
-		expect(query.limit).toHaveBeenCalledExactlyOnceWith(10)
 		expect(companyFind.mock.calls[0][1]).toBe('_id publicName slug description address')
-		expect(liveItemsAcrossShops.mock.calls[0][2]).toEqual({ score: { $meta: 'textScore' } })
+		expect(query.sort).toHaveBeenCalledExactlyOnceWith({ score: { $meta: 'textScore' } })
+		expect(result.nodes).toEqual(shops)
 	})
 
-	// No `limit + 1` and no offset: search answers one relevance-ordered page and the site does not page
-	// through it, so there is no "is there more" flag to compute.
-	it('clamps the page size and never pages past the first screen', async () => {
-		const { query } = await resolveSearch({ limit: 500 })
+	// ⚠️ `trusted()` on the `Query` filter. `sanitizeFilter` would rewrite both `$text` and the
+	// `$geoWithin` on `address.position` into equality tests against literal objects — filters that match
+	// nothing, silently, and read as "no results".
+	it('tags every operator in the filter it hands mongoose', async () => {
+		await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
 
-		expect(query.limit).toHaveBeenCalledExactlyOnceWith(60)
-		expect(query.skip).not.toHaveBeenCalled()
-		expect(liveItemsAcrossShops.mock.calls[0][3]).toBe(0)
-		expect(liveItemsAcrossShops.mock.calls[0][4]).toBe(60)
+		const filter = companyFind.mock.calls[0][0]
+
+		expect(filter.$text[TRUSTED]).toBe(true)
+		expect(filter.deleted[TRUSTED]).toBe(true)
+		expect(filter['address.position'][TRUSTED]).toBe(true)
+		expect(filter.published).toBe(true)
 	})
 
 	// ⚠️ `$geoWithin`/`$centerSphere` rather than `$near`, because a query may have exactly one sort and
@@ -383,35 +398,168 @@ describe('search', () => {
 
 		const geo = companyFind.mock.calls[0][0]['address.position']
 
-		expect(geo[TRUSTED]).toBe(true)
 		expect(geo.$geoWithin.$centerSphere[0]).toEqual([9.1919, 45.4642])
+		expect(geo.$geoWithin.$centerSphere[1]).toBeCloseTo(5_000 / 6_378_100, 12)
 	})
 
-	// An item has no coordinates and inherits its shop's, so "items near me" is an item text match whose
-	// *company* falls inside the circle — the filter travels into the `$lookup` sub-pipeline where that
-	// company is already being fetched and checked.
-	it('bounds items by their shop’s position, plainly, inside the join', async () => {
-		await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
-
-		const companyMatch = liveItemsAcrossShops.mock.calls[0][1]
-
-		expect(companyMatch['address.position'].$geoWithin.$centerSphere[1]).toBeCloseTo(5_000 / 6_378_100, 12)
-		expect(Object.getOwnPropertySymbols(companyMatch['address.position'])).toHaveLength(0)
-	})
-
-	it('leaves both filters unbounded when no point is given', async () => {
+	it('leaves the filter unbounded when no point is given', async () => {
 		await resolveSearch()
 
 		expect(companyFind.mock.calls[0][0]).not.toHaveProperty('address.position')
+	})
+
+	// The count carries the whole filter, geo bound included, so it is the same population the page is a
+	// window on — and it is issued with the cap, so the server stops walking at COUNT_CAP matches.
+	it('counts the same filter it searched, bounded by the cap', async () => {
+		await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
+
+		expect(companyCountDocuments).toHaveBeenCalledExactlyOnceWith(companyFind.mock.calls[0][0], { limit: 5_000 })
+	})
+
+	// ⚠️ `total` is capped, so `totalIsExact` is what says whether it is the answer or the cap. The
+	// boundary is asserted from both sides: a collection holding exactly COUNT_CAP matches reports
+	// inexact, because the count stopped there and cannot know there was no 5001st.
+	it.each([
+		[4_999, true],
+		[5_000, false]
+	])('reports a total of %i as exact: %s', async (total, exact) => {
+		companyCountDocuments.mockResolvedValueOnce(total)
+
+		const { result } = await resolveSearch()
+
+		expect(result.total).toBe(total)
+		expect(result.totalIsExact).toBe(exact)
+	})
+
+	// `limit + 1` rather than deriving "is there another page" from `total`, which is capped: past the
+	// cap the derived answer would truncate the result set at whatever COUNT_CAP happens to be. The
+	// extra document is dropped before it is returned.
+	it.each([
+		['a full page and one more', 3, true, 2],
+		['exactly a full page', 2, false, 2]
+	])('fetches one past the window and reports %s', async (_label, fetched, hasMore, kept) => {
+		const shops = Array.from({ length: fetched }, (_, n) => ({ _id: new Types.ObjectId(), publicName: `Shop ${n}` }))
+
+		const { result, query } = await resolveSearch({ limit: 2 }, shops)
+
+		expect(query.limit).toHaveBeenCalledExactlyOnceWith(3)
+		expect(result.hasMore).toBe(hasMore)
+		expect(result.nodes).toHaveLength(kept)
+	})
+
+	it('clamps the page size and defaults it to one screen', async () => {
+		const { query } = await resolveSearch({ limit: 500 })
+		expect(query.limit).toHaveBeenCalledExactlyOnceWith(61)
+
+		const { query: unspecified } = await resolveSearch()
+		expect(unspecified.limit).toHaveBeenCalledExactlyOnceWith(25)
+	})
+
+	// ⚠️ Bounded by the ordinary `MAX_OFFSET`: this is a single-collection query, so a skipped document
+	// costs one index entry, exactly as it does on `/shops`. Past the cap it throws rather than clamping —
+	// silently serving page 10 000 to a caller who asked for page 20 000 is how a crawler indexes the same
+	// shops under 10 000 URLs.
+	it('pages by offset, normalises a negative one and refuses one past the cap', async () => {
+		const { query } = await resolveSearch({ offset: 48 })
+		expect(query.skip).toHaveBeenCalledExactlyOnceWith(48)
+
+		const { query: negative } = await resolveSearch({ offset: -1 })
+		expect(negative.skip).toHaveBeenCalledExactlyOnceWith(0)
+
+		await expect(resolveSearch({ offset: 10_000 })).resolves.toBeDefined()
+		await expect(searchCompanies.resolve(null, { q: 'sneaker', offset: 10_001 })).rejects.toThrow('offset must not exceed 10000')
+	})
+})
+
+describe('searchItems', () => {
+	const resolveSearch = async (args: Record<string, unknown> = {}) => await searchItems.resolve(null, { q: 'sneaker', ...args })
+
+	// ⚠️ The pipeline's `$match` is spelled plainly. Aggregation stages never pass through
+	// `sanitizeFilter`, and a `trusted()` wrapper inside one is an unknown object the server rejects.
+	it('hands the join a plain text match and a plain geo bound', async () => {
+		await resolveSearch({ q: '  sneaker  ', near: { ...MILAN, radiusMeters: 5_000 } })
+
+		const companyMatch = liveItemsAcrossShops.mock.calls[0][1]
+
+		expect(liveItemsAcrossShops.mock.calls[0][0]).toEqual({ $text: { $search: 'sneaker' } })
+		expect(Object.getOwnPropertySymbols(liveItemsAcrossShops.mock.calls[0][0].$text)).toHaveLength(0)
+		expect(companyMatch['address.position'].$geoWithin.$centerSphere[1]).toBeCloseTo(5_000 / 6_378_100, 12)
+		expect(Object.getOwnPropertySymbols(companyMatch['address.position'])).toHaveLength(0)
+		expect(liveItemsAcrossShops.mock.calls[0][2]).toEqual({ score: { $meta: 'textScore' } })
+	})
+
+	// An item has no coordinates and inherits its shop's, so the radius travels into the `$lookup`
+	// sub-pipeline where that company is already being fetched and checked.
+	it('leaves the company match empty when no point is given', async () => {
+		await resolveSearch()
+
 		expect(liveItemsAcrossShops.mock.calls[0][1]).toEqual({})
 	})
 
-	it('validates the point before it searches anything', async () => {
-		await expect(search.resolve(null, { q: 'sneaker', near: { lng: 999, lat: 0, radiusMeters: 1 } })).rejects.toThrow(
-			'near.lng must be a longitude between -180 and 180'
-		)
+	it('returns what came back through the join, ranked by relevance', async () => {
+		const hits = [item(1)]
+		liveItemsAcrossShops.mockResolvedValueOnce(hits)
 
-		expect(companyFind).not.toHaveBeenCalled()
+		await expect(resolveSearch()).resolves.toMatchObject({ nodes: hits, hasMore: false })
+	})
+
+	// ⚠️ Never exact, and not because of the cap: the count runs on `item` alone, where it can see
+	// neither `company.published` nor the radius — both live in the other collection and no count can
+	// join. An upper bound, honestly labelled.
+	it.each([[0], [7], [5_000]])('counts %i live items and still refuses to call the total exact', async (total) => {
+		itemCountDocuments.mockResolvedValueOnce(total)
+
+		const result = await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
+
+		const filter = itemCountDocuments.mock.calls[0][0]
+
+		// The radius is deliberately absent here: it lives on `company`, and this count cannot join.
+		// That absence is half of why the total is never reported exact.
+		expect(Object.keys(filter)).toEqual(['$text', 'published', 'deleted'])
+		expect(filter.$text.$search).toBe('sneaker')
+		expect(filter.$text[TRUSTED]).toBe(true)
+		expect(filter.published).toBe(true)
+		expect(filter.deleted[TRUSTED]).toBe(true)
+		expect(itemCountDocuments.mock.calls[0][1]).toEqual({ limit: 5_000 })
+		expect(result.total).toBe(total)
+		expect(result.totalIsExact).toBe(false)
+	})
+
+	// `hasMore` comes from documents that went through the join, which is what keeps it exact while the
+	// count beside it is only an upper bound.
+	it.each([
+		['a full page and one more', 3, true, 2],
+		['exactly a full page', 2, false, 2]
+	])('fetches one past the window and reports %s', async (_label, fetched, hasMore, kept) => {
+		liveItemsAcrossShops.mockResolvedValueOnce(Array.from({ length: fetched }, (_, n) => item(n)))
+
+		const result = await resolveSearch({ limit: 2 })
+
+		expect(liveItemsAcrossShops.mock.calls[0][4]).toBe(3)
+		expect(result.hasMore).toBe(hasMore)
+		expect(result.nodes).toHaveLength(kept)
+	})
+
+	it('clamps the page size and defaults it to one screen', async () => {
+		await resolveSearch({ limit: 500 })
+		expect(liveItemsAcrossShops.mock.calls[0][4]).toBe(61)
+
+		await resolveSearch()
+		expect(liveItemsAcrossShops.mock.calls[1][4]).toBe(25)
+	})
+
+	// ⚠️ Bounded by `MAX_CROSS_SHOP_OFFSET`, not by `MAX_OFFSET`. Every skipped document here is
+	// multiplied by `OVERFETCH` and then fed through a join, so depth costs several times what it costs
+	// on the company half.
+	it('pages by offset, normalises a negative one and refuses one past the tighter cross-shop cap', async () => {
+		await resolveSearch({ offset: 48 })
+		expect(liveItemsAcrossShops.mock.calls[0][3]).toBe(48)
+
+		await resolveSearch({ offset: -1 })
+		expect(liveItemsAcrossShops.mock.calls[1][3]).toBe(0)
+
+		await expect(resolveSearch({ offset: 2_000 })).resolves.toBeDefined()
+		await expect(resolveSearch({ offset: 2_001 })).rejects.toThrow('offset must not exceed 2000')
 	})
 })
 

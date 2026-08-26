@@ -13,7 +13,7 @@ sessions, and this service only serves what needs no session at all.
 |---|---|
 | `companies`, `companiesNearby`, `companyBySlug` | the shop directory — a shop *is* a `company`, so there is no shop query |
 | `items`, `itemBySlug`, `itemCategories` | the domain-neutral catalogue (ADR-008) |
-| `search` | text search across the two indexed collections |
+| `searchCompanies`, `searchItems` | text search, one indexed collection per field — the caller picks which, and gets one page of it |
 | `sitemapEntries` | what the SSR frontend builds `sitemap.xml` from |
 | `publicHelloNoArgs`, `publicHelloArgs` | liveness probes, kept deliberately |
 

@@ -12,6 +12,7 @@ const userForRegistration = vi.fn()
 const emailAlreadyValid = vi.fn()
 const checkEmailLen = vi.fn()
 const checkPwdLen = vi.fn()
+const endEverySessionUser = vi.fn()
 
 const boundResetPwdResolve = vi.fn(async () => 'delegated-reset')
 const boundUpdatePwdResolve = vi.fn(async () => 'delegated-update')
@@ -48,6 +49,7 @@ vi.mock('@axiumine/koa-utils/email/SocketLabsLib', () => ({
 	})
 }))
 
+vi.mock('../src/lib/access/endEverySession.mts', () => ({ endEverySessionUser }))
 vi.mock('../src/lib/access/guardPublicWrite.mts', () => ({ guardPublicWrite }))
 vi.mock('../src/lib/access/sendUserVerifyEmail.mts', () => ({ sendUserVerifyEmail }))
 vi.mock('../src/lib/access/verifyEmailFlowUser.mts', () => ({ setEmailHashUser }))
@@ -515,5 +517,53 @@ describe('userUpdatePwd', () => {
 		await expect(userUpdatePwd.resolve(null, updateArgs)).rejects.toThrow('Too many requests')
 
 		expect(boundUpdatePwdResolve).not.toHaveBeenCalled()
+		expect(endEverySessionUser).not.toHaveBeenCalled()
+	})
+})
+
+// E15-S10. The public reset flow was the fourth credential write on the platform and the last one that
+// revoked nothing: somebody resetting their password because they believed another person was inside the
+// account changed the lock and left every stolen session open.
+describe('userUpdatePwd — ending the sessions the reset just made resettable', () => {
+	const updateArgs = { email: TYPED_EMAIL, hash: 'reset-hash', password: 'a-new-password', turnstileToken: 'cf-token' }
+
+	it('ends every session the customer holds, under the normalised address', async () => {
+		await userUpdatePwd.resolve(null, updateArgs)
+
+		expect(endEverySessionUser).toHaveBeenCalledExactlyOnceWith(EMAIL)
+	})
+
+	// ⚠️ After the delegate, never before it. A revoke placed first would log the customer out of every
+	// device for a reset that then failed validation, and would run its read on every wrong hash and every
+	// unknown address — the whole rate-limited abuse surface — for the one caller about to succeed.
+	it('revokes only once the write has returned', async () => {
+		await userUpdatePwd.resolve(null, updateArgs)
+
+		expect(boundUpdatePwdResolve.mock.invocationCallOrder[0]).toBeLessThan(endEverySessionUser.mock.invocationCallOrder[0])
+	})
+
+	it('revokes nothing when the delegate refuses', async () => {
+		boundUpdatePwdResolve.mockRejectedValueOnce(new Error('Forbidden'))
+
+		await expect(userUpdatePwd.resolve(null, updateArgs)).rejects.toThrow('Forbidden')
+
+		expect(endEverySessionUser).not.toHaveBeenCalled()
+	})
+
+	// ⚠️ The password is live and the hash is spent by the time this fires, so the customer has to request a
+	// fresh link. That cost is accepted: the alternative is answering `true` with every stolen session still
+	// open, which is the exact lie the story exists to stop telling.
+	it('answers 500 rather than true when the revoke is refused', async () => {
+		endEverySessionUser.mockRejectedValueOnce(new Error('Connection is closed'))
+
+		await expect(userUpdatePwd.resolve(null, updateArgs)).rejects.toThrow('Internal Server Error')
+	})
+
+	it('reports the refused revoke as a 500 through tryCatchRethrow, not as the raw Redis error', async () => {
+		endEverySessionUser.mockRejectedValueOnce(new Error('Connection is closed'))
+
+		const thrown = await userUpdatePwd.resolve(null, updateArgs).catch((e: unknown) => e)
+
+		expect((thrown as { extensions?: { http?: { status?: number } } }).extensions?.http?.status).toBe(500)
 	})
 })

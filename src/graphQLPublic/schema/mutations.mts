@@ -1,11 +1,12 @@
 // Both halves of the reset now come from the same bound flow: the local updatePwd fork and the
 // three src/lib/db helpers behind it existed only because koa-utils' pair was welded to UserBase.
-import { resetPwd, updatePwd } from '@lib/access/resetPwdFlow.mjs'
+import { resetPwd } from '@lib/access/resetPwdFlow.mjs'
 import { GraphQLObjectType } from 'graphql'
 
 import { publicMutArgs } from './mutations/publicMutArgs.mjs'
 import { publicMutNoArgs } from './mutations/publicMutNoArgs.mjs'
 import { shopOwnerRegister } from './mutations/shopOwnerRegister.mjs'
+import { updatePwd } from './mutations/updatePwd.mjs'
 import { userRegister } from './mutations/userRegister.mjs'
 import { userResetPwd } from './mutations/userResetPwd.mjs'
 import { userUpdatePwd } from './mutations/userUpdatePwd.mjs'
@@ -19,6 +20,11 @@ const MutationsPublic = new GraphQLObjectType({
 		// ⚠️ The ShopOwner pair. `resetPwd` mails a link on `APP_DOMAIN`; the customer pair below mails one
 		// on `APP_DOMAIN_USER`. Two fields rather than one flow choosing at runtime because it cannot:
 		// `user` and `shopOwner` are two collections, and an email plus a hash says nothing about which.
+		//
+		// ⚠️ `resetPwd` is the bound flow itself; `updatePwd` is a local wrapper around it (E15-S10). The
+		// wrapper adds one thing and changes nothing else: a successful reset now ends every session the
+		// account holds, which the flow alone never did. Wiring the bound `updatePwd` straight in again
+		// would silently drop that, and nothing in the schema would look different.
 		resetPwd,
 		updatePwd,
 		// ⚠️ Only the mutations below are behind the Turnstile + rate-limit guard. `resetPwd` and

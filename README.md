@@ -19,10 +19,20 @@ sessions, and this service only serves what needs no session at all.
 
 | Mutations | |
 |---|---|
+| `resetPwd`, `updatePwd` | the seller reset flow's two halves |
+| `shopOwnerRegister` | seller self-service registration — parked on `waitApprov` until an operator clears it |
 | `userRegister` | end-customer self-service registration — no approval step, unlike `ShopOwner` |
 | `userVerifyEmailResend` | re-sends the confirmation mail |
-| `userResetPwd`, `userUpdatePwd` | the reset flow's two halves |
+| `userResetPwd`, `userUpdatePwd` | the customer reset flow's two halves |
 | `publicMutNoArgs`, `publicMutArgs` | liveness probes |
+
+⚠️ **A completed reset ends every session the account holds** (E15-S10). `updatePwd` and `userUpdatePwd`
+both call `revokeAllSessionsForAccount` once the write has committed, so somebody resetting their password
+because they believe another person is inside the account actually closes that person out. The address is
+looked up here, by `login.email`, because koa-utils' delegate answers a bare boolean and never names the
+account it wrote to. A revoke that fails answers 500: the password is live, the hash is spent, and the
+caller has to request a fresh link — accepted, because the alternative is reporting success while a stolen
+session stays open.
 
 ⚠️ **`userRegister` has four outcomes and answers `true` for every one of them.** A 409 on a taken
 address would make it an account-enumeration oracle, so the outcomes are told apart only in the inbox: a

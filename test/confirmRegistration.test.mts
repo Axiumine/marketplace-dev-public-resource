@@ -2,11 +2,7 @@ import { Binary } from 'mongodb'
 import { Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { chain, TRUSTED } from './support/queryChain.mts'
-
-const buildAccountScrub = vi.fn(() => ({ $set: { 'login.email': 'scrubbed' }, $unset: { personalData: '' } }))
-
-vi.mock('@axiumine/marketplace-common/others/accountScrub', () => ({ buildAccountScrub }))
+import { chain, type IChain } from './support/queryChain.mts'
 
 const deletePendingRegistration = vi.fn()
 const pendingSlot = vi.fn()
@@ -73,6 +69,9 @@ const HASH = 'h'.repeat(50)
 const ID = new Types.ObjectId('66c0ffee0000000000000001')
 const REGISTERED_AT = new Date('2026-08-29T10:00:00.000Z')
 const HASHED = '$2b$14$' + 'z'.repeat(53)
+/** A bcrypt hash of the *same* password under a different salt — what a second registration produces. */
+const OTHER_HASH = '$2b$14$' + 'q'.repeat(53)
+const CLOSED_ID = new Types.ObjectId('66c0ffee0000000000000002')
 
 const record = {
 	_id: ID,
@@ -87,11 +86,9 @@ const record = {
 const findOne = vi.fn()
 const updateOne = vi.fn()
 const insertMany = vi.fn()
-const exists = vi.fn()
-
 const target = {
 	tier: 'user' as const,
-	model: { findOne, updateOne, insertMany, exists } as never,
+	model: { findOne, updateOne, insertMany } as never,
 	waitApprov: false,
 	encryptEmail: vi.fn(),
 	sendVerifyEmail: vi.fn()
@@ -100,16 +97,45 @@ const target = {
 const confirmRegistration = createConfirmRegistration(target)
 const confirmShopOwner = createConfirmRegistration({ ...target, tier: 'shopOwner', waitApprov: true })
 
+/** A live account holding the address, opened by *this* registration — the hash is the record's. */
+const ourHolder = { _id: ID, login: { password: HASHED } }
+
+/** A live account holding the address that this registration did not open: somebody else's. */
+const otherHolder = { _id: new Types.ObjectId('66c0ffee0000000000000003'), login: { password: OTHER_HASH } }
+
+/** The same address, still held by the account whose owner closed it — inside the retention window. */
+const closedHolder = {
+	_id: CLOSED_ID,
+	deleted: new Date('2026-08-20T09:00:00.000Z'),
+	login: { password: OTHER_HASH }
+}
+
 /**
- * What the closed-holder lookup finds. The default below is "nobody holds it"; a test that wants a
- * holder queues one over the top, which is why this is a `...Once`.
+ * Every lookup chain handed out this run, in call order. `openAccount` reads the address twice on the
+ * paths that fail — once in the transaction and once after it aborts — and which session each read
+ * carried is the difference between a recovery that works and one that reads the aborted transaction's
+ * own view, so the chains are kept rather than the documents alone.
  */
-function closedHolderIs(closed: unknown) {
-	findOne.mockReturnValueOnce(chain(closed))
+const chains: IChain[] = []
+
+/**
+ * Queues what the address lookup finds, one answer per call and in order.
+ *
+ * The default set in `beforeEach` is "nobody holds it", which is what every insert-path test wants for
+ * both reads; a test that wants a holder queues one over the top, which is why these are `...Once`.
+ */
+function addressHeldBy(...holders: unknown[]) {
+	for (const holder of holders) {
+		const link = chain(holder)
+
+		chains.push(link)
+		findOne.mockReturnValueOnce(link)
+	}
 }
 
 beforeEach(() => {
 	vi.clearAllMocks()
+	chains.length = 0
 	pendingSlot.mockResolvedValue(SLOT)
 	readPendingRegistration.mockResolvedValue(record)
 	findOne.mockReturnValue(chain(null))
@@ -291,7 +317,6 @@ describe('confirmRegistration — opening the account', () => {
 	// would leak — so the `finally` is asserted from the failing side too.
 	it('ends the session even when the transaction throws', async () => {
 		insertMany.mockRejectedValueOnce(new Error('write conflict'))
-		exists.mockResolvedValueOnce(null)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('write conflict')
 
@@ -316,7 +341,6 @@ describe('confirmRegistration — opening the account', () => {
 
 	it('leaves the key alone when the write fails', async () => {
 		insertMany.mockRejectedValueOnce(new Error('write conflict'))
-		exists.mockResolvedValueOnce(null)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('write conflict')
 
@@ -325,117 +349,199 @@ describe('confirmRegistration — opening the account', () => {
 	})
 })
 
-describe('confirmRegistration — reclaiming the address', () => {
-	const closedId = new Types.ObjectId('66c0ffee0000000000000002')
+describe('confirmRegistration — the address lookup', () => {
+	// ⚠️ **No `deleted` clause, and that is the point.** `login.email_unique` is the only unique index on
+	// either collection — no `partialFilterExpression`, no `sparse` (ADR-011) — so whoever holds the
+	// address is the answer to every question this module asks. Narrowing to the closed ones would hide
+	// the live holder that the replay branch and the two-people-one-address race both turn on.
+	it('asks who holds the address, not who closed it', async () => {
+		await confirmRegistration('anna@test.it', HASH)
 
-	it('does nothing when no closed account holds the address', async () => {
+		const [filter] = findOne.mock.calls[0]
+
+		expect(Object.keys(filter)).toEqual(['login.email'])
+		expect(filter['login.email']).toBe(CIPHERTEXT)
+	})
+
+	// The ciphertext Redis held is the value that goes into the filter — ADR-043's *confirm is a copy*.
+	// It is what `login.email_unique` is built over, so this is a point lookup rather than a scan, and
+	// nothing on this path decrypts or re-derives an address to make it.
+	it('reads the three fields the two decisions need, and no others', async () => {
+		await confirmRegistration('anna@test.it', HASH)
+
+		expect(findOne.mock.calls[0][1]).toBe('_id deleted login.password')
+	})
+})
+
+describe('confirmRegistration — restoring a closed account', () => {
+	it('writes no update when the address is free', async () => {
 		await confirmRegistration('anna@test.it', HASH)
 
 		expect(updateOne).not.toHaveBeenCalled()
-		expect(buildAccountScrub).not.toHaveBeenCalled()
+		expect(insertMany).toHaveBeenCalledOnce()
 	})
 
-	// ⚠️ **`deleted` is in the filter, not merely checked by the caller.** A live document holding this
-	// address never reaches here — submit answered "already registered" and wrote no record — but the
-	// guard that matters is the one a future caller cannot skip by reading a branch wrongly.
-	it('looks only for a closed holder, in the session', async () => {
-		closedHolderIs({ _id: closedId })
+	// ⚠️ **ADR-046: the retention window is an undo window.** Signing up again at a closed address inside
+	// it is the request to come back, and the activation link is the proof — the same proof a password
+	// reset accepts. Minting a second document instead would leave the person's shops, items and
+	// addresses hanging off an id they no longer are.
+	it('hands the closed document back rather than minting a new one', async () => {
+		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
-		const [filter, projection] = findOne.mock.calls[0]
-
-		expect(filter['login.email']).toBe(CIPHERTEXT)
-		expect(filter.deleted.$exists).toBe(true)
-		expect(projection).toBe('_id')
+		expect(updateOne).toHaveBeenCalledOnce()
+		expect(updateOne.mock.calls[0][0]).toEqual({ _id: CLOSED_ID })
+		expect(insertMany).not.toHaveBeenCalled()
 	})
 
-	// `sanitizeFilter` is on globally, so a bare `{ $exists: true }` is cast to a literal to match
-	// against — which matches nothing, so the scrub would silently skip and the insert would then fail on
-	// the unique index. It fails safe, but it fails.
-	it('marks the operator trusted, or it would match nothing', async () => {
-		closedHolderIs({ _id: closedId })
+	// ⚠️ The empty strings are the `$unset` operand MongoDB wants and are asserted as written: `deletedBy`
+	// left behind names an operator on a live account, and `deleted` left behind is an account that is
+	// back but still refused at every login gate.
+	it('clears the closure and the actor who made it', async () => {
+		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
-		expect(findOne.mock.calls[0][0].deleted[TRUSTED]).toBe(true)
+		expect(updateOne.mock.calls[0][1].$unset).toEqual({ deleted: '', deletedBy: '' })
 	})
 
-	// The same update the retention sweep runs at day 30, built by the same function — a hand-written
-	// second copy is how a field added to `user` survives one of the two paths in silence.
-	it('scrubs the closed holder with the shared retention update', async () => {
-		closedHolderIs({ _id: closedId })
+	// The password is the one just submitted. The person proved they can read mail at the address and
+	// chose a credential doing it; the hash the account carried before the closure is not kept, because
+	// nothing may outlive a closure that could be used to log in as the account before this moment.
+	it('takes the credential the person just chose, and marks the address proved', async () => {
+		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
-		expect(buildAccountScrub).toHaveBeenCalledExactlyOnceWith('user', `${closedId}`, expect.any(Date))
-		expect(updateOne).toHaveBeenCalledExactlyOnceWith({ _id: closedId }, buildAccountScrub.mock.results[0].value, {
-			session,
-			runValidators: true
+		expect(updateOne.mock.calls[0][1].$set).toEqual({
+			'login.password': HASHED,
+			emailVerify: { valid: true }
 		})
 	})
 
-	// The scrub is a plaintext update on purpose: `fieldEncryptionPlugin` encrypts `$set` operands on the
-	// way past, and `runValidators` is what makes the collection's own `$jsonSchema` the last word on the
-	// shape the overwrite leaves behind.
-	it('validates the scrub against the collection', async () => {
-		closedHolderIs({ _id: closedId })
+	// ⚠️ **`_id` and `registeredAt` are absent by design.** The whole of an undo is that this is the *same*
+	// account — the id every `company.idShopOwner` still points at, and the date the person actually
+	// joined. A restore that rewrote either would be a new account wearing an old one's data.
+	it('keeps the id and the join date the account already had', async () => {
+		addressHeldBy(closedHolder)
+
+		await confirmRegistration('anna@test.it', HASH)
+
+		const update = updateOne.mock.calls[0][1]
+
+		expect(Object.keys(update.$set)).not.toContain('registeredAt')
+		expect(Object.keys(update.$set)).not.toContain('_id')
+	})
+
+	// ⚠️ **A suspended-then-closed account comes back suspended.** Only the Admin tier lifts a suspension
+	// (ADR-044), and an undo the subject performs on themselves must not be the way around one.
+	it('leaves a suspension exactly where the operator left it', async () => {
+		addressHeldBy(closedHolder)
+
+		await confirmRegistration('anna@test.it', HASH)
+
+		const update = updateOne.mock.calls[0][1]
+		const written = [...Object.keys(update.$set), ...Object.keys(update.$unset)]
+
+		expect(written.filter((path) => path.startsWith('disabled'))).toEqual([])
+	})
+
+	// ⚠️ The platform owner's ruling of 2026-08-29: *"the state of waitApprove is true, so admin can not
+	// approve the user if it is a problem"*. Coming back is re-entry through the door a first registration
+	// uses, so the operator gets the same veto — and it is the only human checkpoint on a recycled mailbox.
+	it('re-raises the approval gate on the seller tier', async () => {
+		addressHeldBy(closedHolder)
+
+		await confirmShopOwner('mark@test.it', HASH)
+
+		expect(updateOne.mock.calls[0][1].$set.waitApprov).toBe(true)
+	})
+
+	// The customer tier has no approval gate at all, and a field the `user` schema does not declare fails
+	// `additionalProperties: false` — so the two collections cannot share one update shape.
+	it('raises no approval gate on the customer tier', async () => {
+		addressHeldBy(closedHolder)
+
+		await confirmRegistration('anna@test.it', HASH)
+
+		expect(updateOne.mock.calls[0][1].$set).not.toHaveProperty('waitApprov')
+	})
+
+	// The restore is a plaintext update on purpose: `fieldEncryptionPlugin` encrypts `$set` operands on
+	// the way past, and `runValidators` is what makes the collection's own `$jsonSchema` the last word on
+	// the shape it leaves behind.
+	it('validates the restore against the collection', async () => {
+		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
 		expect(updateOne.mock.calls[0][2].runValidators).toBe(true)
 	})
 
-	// ⚠️ **The order is load bearing.** MongoDB enforces a unique index at each write rather than at
-	// commit, so the address has to have moved to `deleted-<id>@invalid.local` before the new document
-	// claims it. Reversed, every re-registration of a closed address fails on `login.email_unique`.
-	it('frees the address before it claims it', async () => {
-		closedHolderIs({ _id: closedId })
-
-		await confirmRegistration('anna@test.it', HASH)
-
-		expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(insertMany.mock.invocationCallOrder[0])
-	})
-
-	// Both writes carry the session, so a failure of either leaves neither — the closed document keeps
-	// its original address and nobody holds a half-reclaimed one.
-	it('runs the scrub and the insert in one transaction', async () => {
-		closedHolderIs({ _id: closedId })
+	it('runs the lookup and the restore in one transaction', async () => {
+		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
 		expect(withTransaction).toHaveBeenCalledOnce()
+		expect(chains[0].session).toHaveBeenCalledWith(session)
 		expect(updateOne.mock.calls[0][2].session).toBe(session)
-		expect(insertMany.mock.calls[0][1].session).toBe(session)
 	})
 
-	it('names the tier being scrubbed, so the two collections cannot share a field list', async () => {
-		closedHolderIs({ _id: closedId })
+	// An account opened and an account handed back both send it: the person completed a registration
+	// either way, and saying which of the two happened would say what the platform still holds about an
+	// address to anyone who can type one in.
+	it('welcomes the person and consumes the record, as an opened account does', async () => {
+		addressHeldBy(closedHolder)
 
-		await confirmShopOwner('mark@test.it', HASH)
+		await confirmRegistration('anna@test.it', HASH)
 
-		expect(buildAccountScrub.mock.calls[0][0]).toBe('shopOwner')
+		expect(registrationMailer.sendWelcome).toHaveBeenCalledExactlyOnceWith('anna@test.it')
+		expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
+	})
+})
+
+describe('confirmRegistration — somebody else holds the address', () => {
+	// ⚠️ The two-people-one-address race: both submitted before either clicked, and the first click opened
+	// the account. The loser must not be handed it, and must not be told they are the loser — the refusal
+	// is the same check-your-mail page every other refusal on this route answers with.
+	it('refuses a live holder this registration did not open', async () => {
+		addressHeldBy(otherHolder, otherHolder)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow(EMAIL_CHECK_LINK)
+
+		expect(insertMany).not.toHaveBeenCalled()
+		expect(updateOne).not.toHaveBeenCalled()
+	})
+
+	it('sends no welcome and leaves the record for the person who owns it', async () => {
+		addressHeldBy(otherHolder, otherHolder)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow(EMAIL_CHECK_LINK)
+
+		expect(registrationMailer.sendWelcome).not.toHaveBeenCalled()
+		expect(deletePendingRegistration).not.toHaveBeenCalled()
 	})
 })
 
 describe('confirmRegistration — a replayed click', () => {
 	// ⚠️ The confirm step spans Redis and MongoDB and can only be idempotent, not atomic: a crash between
-	// the commit and the `DEL` leaves a live key over a live account. The pre-minted `_id` is what makes
-	// that knowable — an account carrying *this record's* id can only have been written by an earlier run
-	// of this same confirmation.
-	it('swallows the failure when the account is already there', async () => {
-		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
-		exists.mockResolvedValueOnce({ _id: ID })
+	// the commit and the `DEL` leaves a live key over a live account. The credential is what makes that
+	// knowable — `login.password` is the record's bcrypt hash byte for byte only if this very registration
+	// is what put it there, two registrations at one address hashing to different values.
+	it('treats a live holder carrying this record’s credential as a second click', async () => {
+		addressHeldBy(ourHolder)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).resolves.toBeUndefined()
 
-		expect(exists).toHaveBeenCalledExactlyOnceWith({ _id: ID })
+		expect(insertMany).not.toHaveBeenCalled()
+		expect(updateOne).not.toHaveBeenCalled()
 	})
 
 	// The second click is the same account being confirmed twice, and the person read the first mail.
 	it('sends no second welcome, and still consumes the key', async () => {
-		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
-		exists.mockResolvedValueOnce({ _id: ID })
+		addressHeldBy(ourHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
@@ -443,37 +549,79 @@ describe('confirmRegistration — a replayed click', () => {
 		expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
 	})
 
-	// ⚠️ **A genuine collision must still be an error.** A racing registration that claimed
-	// `login.email` first fails the insert with no document under our `_id`, and swallowing that would
-	// report a registration as done while the person has no account.
-	it('rethrows when no account carries the record’s id', async () => {
+	// A commit whose acknowledgement was lost reports an error over work that landed, so the recovery
+	// asks the collection rather than reading the driver's error — which is what makes it right for every
+	// reason a transaction can fail, a duplicate key being only the loudest.
+	it('swallows an insert failure when the account it describes is in fact there', async () => {
 		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
-		exists.mockResolvedValueOnce(null)
+		addressHeldBy(null, ourHolder)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).resolves.toBeUndefined()
+
+		expect(registrationMailer.sendWelcome).not.toHaveBeenCalled()
+		expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
+	})
+
+	// ⚠️ **The restore path needs the same recovery, and an `_id` check could not have given it one.** A
+	// restore mints no id — it writes to the document that was already there — so "is there an account
+	// carrying the record's `_id`" answers `no` over a restore that committed. The credential answers it.
+	it('swallows a restore failure when the account is in fact back', async () => {
+		updateOne.mockRejectedValueOnce(new Error('E11000 duplicate key'))
+		addressHeldBy(closedHolder, ourHolder)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).resolves.toBeUndefined()
+
+		expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
+	})
+
+	// ⚠️ **A genuine collision must still be an error.** A racing registration that claimed `login.email`
+	// first leaves a holder with a different hash, and swallowing that would report a registration as done
+	// while the person has no account.
+	it('rethrows when the address ended up held by somebody else', async () => {
+		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
+		addressHeldBy(null, otherHolder)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('E11000 duplicate key')
 
 		expect(deletePendingRegistration).not.toHaveBeenCalled()
 	})
 
-	// The check is a read rather than an inspection of the driver's error, which is what makes it correct
-	// for every reason a transaction can fail — a commit whose acknowledgement was lost included, which
-	// reports an error over work that landed.
+	it('rethrows when nothing landed at all', async () => {
+		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
+		addressHeldBy(null, null)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('E11000 duplicate key')
+
+		expect(deletePendingRegistration).not.toHaveBeenCalled()
+	})
+
+	// A closed holder is not a recovery either: whatever the failed transaction did, it was not the
+	// restore, and reporting success would leave the person with an account still refused at every gate.
+	it('rethrows when the address is still held by a closed account', async () => {
+		insertMany.mockRejectedValueOnce(new Error('write conflict'))
+		addressHeldBy(null, closedHolder)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('write conflict')
+	})
+
 	it('recovers from a failure that is not a duplicate key at all', async () => {
 		withTransaction.mockRejectedValueOnce(new Error('connection reset'))
-		exists.mockResolvedValueOnce({ _id: ID })
+		addressHeldBy(ourHolder)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).resolves.toBeUndefined()
 	})
 
-	// Read outside the session: the transaction has aborted, and what is being asked is what the
-	// collection holds now.
+	// ⚠️ **The recovery read carries no session, and the transaction read carries one.** The transaction
+	// has aborted, and what is being asked is what the collection holds now — asked through the aborted
+	// session it would answer from a view that no longer exists.
 	it('asks the collection without the aborted session', async () => {
 		insertMany.mockRejectedValueOnce(new Error('E11000 duplicate key'))
-		exists.mockResolvedValueOnce({ _id: ID })
+		addressHeldBy(null, ourHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
 
-		expect(exists.mock.calls[0]).toHaveLength(1)
+		expect(chains[0].session).toHaveBeenCalledWith(session)
+		expect(chains[1].session).toHaveBeenCalledWith(null)
 	})
 })
 

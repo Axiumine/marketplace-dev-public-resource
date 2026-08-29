@@ -1,4 +1,3 @@
-import { buildAccountScrub } from '@axiumine/marketplace-common/others/accountScrub'
 import {
 	deletePendingRegistration,
 	type IPendingRegistration,
@@ -14,8 +13,7 @@ import {
 	REGISTRATION_TARGET_SHOP_OWNER,
 	REGISTRATION_TARGET_USER
 } from '@lib/registration/registrationTargets.mjs'
-import type { Binary } from 'mongodb'
-import mongoose, { type ClientSession, trusted, type Types } from 'mongoose'
+import mongoose, { type ClientSession, type Types } from 'mongoose'
 
 /**
  * Where every refusal sends the browser.
@@ -31,46 +29,11 @@ export const EMAIL_CHECK_LINK = '/x/email-check'
 /** Where a confirmed registration sends the browser. */
 export const REGISTRATION_DONE_LINK = '/x/registration-done'
 
-/** The one field the closed-holder lookup projects. */
-interface IClosedHolder {
+/** What the address lookup projects: who holds it, whether they are closed, and what they log in with. */
+interface IAddressHolder {
 	_id: Types.ObjectId
-}
-
-/**
- * Frees the address, if a closed account is still holding it, by overwriting rather than removing.
- *
- * This is ADR-041's retention scrub brought forward: the sweep would run it on day 30, and this runs it at
- * the moment somebody proves they can read mail at the address, which is earlier than the retention rule
- * requires rather than later. `buildAccountScrub` is the *same* update in both places by construction —
- * a hand-written second copy is how a field added to `user` survives one of the two paths in silence.
- *
- * ⚠️ **`deleted` is in the filter, not merely checked by the caller.** A live document holding this
- * address never reaches here, because submit answered *"already registered"* and wrote no pending record —
- * but the guard that matters is the one a future caller cannot skip by reading a branch wrongly. With it,
- * a live account is not scrubbed and the insert below fails on `login.email_unique`, loudly.
- *
- * `trusted()` because `sanitizeFilter` is on globally: a bare `{ $exists: true }` is cast to a literal to
- * match against, which matches nothing at all — so the scrub would silently skip and the insert would then
- * fail on the unique index. It fails safe, but it fails.
- *
- * ⚠️ **This runs before the insert and inside the same transaction, and the order is load bearing.**
- * MongoDB enforces a unique index at each write rather than at commit, so the address has to have moved to
- * `deleted-<id>@invalid.local` before the new document claims it.
- */
-async function scrubClosedHolder(target: IRegistrationTarget, email: Binary, session: ClientSession): Promise<void> {
-	const closed = await target.model
-		.findOne({ [EMAIL_PATH]: email, deleted: trusted({ $exists: true }) }, '_id')
-		.session(session)
-		.lean<IClosedHolder>()
-
-	if (closed === null) {
-		return
-	}
-
-	await target.model.updateOne({ _id: closed._id }, buildAccountScrub(target.tier, `${closed._id}`, new Date()), {
-		session,
-		runValidators: true
-	})
+	deleted?: Date
+	login: { password: string }
 }
 
 /**
@@ -92,41 +55,125 @@ function accountDocument(target: IRegistrationTarget, record: IPendingRegistrati
 }
 
 /**
- * Reclaims the address and opens the account, in one transaction. Answers whether this call is the one
- * that did it.
+ * The update that hands a closed account back to the person who closed it (ADR-046).
  *
- * ⚠️ **`insertMany`, not `create`.** `LoginSubDocSchema`'s `pre('save')` bcrypts `password` whenever the
- * path is modified, and `create` routes through `save` — so a `create` here would store
- * `bcrypt(bcrypt(password))` and open an account that can never log in. `insertMany` runs no `save`
- * middleware and still runs `pre('insertMany')`, whose encryption pass is idempotent over the `Binary` the
- * record carries. **Which rule applies is decided by the write operator, never by the field.**
+ * ⚠️ **`registeredAt` and `_id` are deliberately not in it.** The whole point of an undo is that this is the
+ * *same* account: the id every `company.idShopOwner` and every `address` still points at, and the date the
+ * person actually joined. A restore that minted either would be a new account wearing an old one's data.
  *
- * ⚠️ **A failure is not necessarily a failure.** The confirm step spans Redis and MongoDB and can only be
- * idempotent, not atomic: a crash between the commit and the `DEL` leaves a live key over a live account,
- * and the replay re-runs this transaction. The pre-minted `_id` is what makes that knowable — the insert
- * fails on the duplicate, and an account carrying *this record's* `_id` can only have been written by an
- * earlier run of this same confirmation. So the error is swallowed exactly when that document is there,
- * and rethrown when it is not.
+ * ⚠️ **`waitApprov` goes back up on the seller tier, by the platform owner's ruling of 2026-08-29** — *"the
+ * state of waitApprove is true, so admin can not approve the user if it is a problem"*. A closure is the
+ * platform's last look at an account, so coming back is re-entry through the same door a first registration
+ * uses, and an operator who closed a seller for cause simply never approves the account again. It is also
+ * the only human checkpoint on the recycled-mailbox risk this flow carries; the customer tier has no
+ * equivalent because it has no approval gate at all.
  *
- * The check is a read rather than an inspection of the driver's error, and that is deliberate: it is
- * correct for every reason a transaction can fail — including a commit whose acknowledgement was lost,
- * which reports an error over work that landed — and it does not depend on how a duplicate-key error
- * happens to be shaped this major version. It costs one indexed read, on a path that is already
- * exceptional.
+ * ⚠️ **`disabled` is untouched, and a suspended-then-closed account comes back suspended.** Only the Admin
+ * tier lifts a suspension (ADR-044), and an undo performed by the subject must not be a way around one.
+ *
+ * `login.password` becomes the one just submitted: the person proved they can read mail at the address and
+ * chose a password doing it, which is exactly what a reset proves. The old hash is not kept — nothing may
+ * outlive the closure that could be used to log in as the account before this moment.
+ */
+function restoreUpdate(target: IRegistrationTarget, record: IPendingRegistration) {
+	return {
+		$set: {
+			'login.password': record.password,
+			emailVerify: { valid: true },
+			...(target.waitApprov ? { waitApprov: true } : {})
+		},
+		$unset: { deleted: '', deletedBy: '' }
+	}
+}
+
+/**
+ * Who holds this address right now, projected to the three things the decisions below need: which
+ * document it is, whether it is closed, and what it logs in with.
+ *
+ * ⚠️ **No `deleted` clause in the filter, deliberately.** The address is the only value either collection
+ * indexes uniquely (ADR-011: no `partialFilterExpression`, no `sparse`), so *whoever* holds it is the
+ * answer, and narrowing to the closed ones would hide the live holder that every replay and every race
+ * turns on. `record.email` is already the deterministic ciphertext the index is built over, so this is a
+ * point lookup and never a scan.
+ *
+ * The session is passed explicitly rather than defaulted: the transaction body wants the read inside the
+ * transaction, and the recovery path below wants it emphatically outside one.
+ */
+function findAddressHolder(target: IRegistrationTarget, record: IPendingRegistration, session: ClientSession | null) {
+	return target.model
+		.findOne({ [EMAIL_PATH]: record.email }, '_id deleted login.password')
+		.session(session)
+		.lean<IAddressHolder>()
+}
+
+/**
+ * True when the holder this registration was trying to produce is already there.
+ *
+ * The credential is the discriminator, and it works the same for both writes: `login.password` is the
+ * record's bcrypt hash byte for byte only if *this* registration is what put it there — `insertMany` runs
+ * no `save` middleware and the restore `$set`s the same string, while two registrations at one address
+ * hash to different values, salts being what they are. A closed holder is not it: whatever landed, it was
+ * not the restore.
+ */
+function isOurs(holder: IAddressHolder | null, record: IPendingRegistration): boolean {
+	return holder !== null && holder.deleted === undefined && holder.login.password === record.password
+}
+
+/**
+ * Opens the account this confirmation is for, and answers whether it wrote anything.
+ *
+ * ⚠️ **A closed account holding this address is restored, never replaced (ADR-046).** Within the retention
+ * window the document still holds everything — the platform owner's window *is* the undo window — so the
+ * confirmation clears `deleted` and hands the account back with its id, its history and its shops. The
+ * ADR-041 scrub is what makes this window finite, and it now has exactly one caller: the day-30 sweep. A
+ * scrubbed document can never be found here, because scrubbing is precisely what moves the address off it.
+ *
+ * ⚠️ **A live holder that is not this registration's doing throws**, and the caller answers the
+ * check-your-mail page. It is the two-people-one-address race — both submitted before either clicked — and
+ * the loser must not be told which of the two they are, nor handed somebody else's account.
+ *
+ * ⚠️ **The recovery read is what makes this idempotent, and it covers both writes.** The confirm step spans
+ * Redis and MongoDB and can only be idempotent, not atomic: a crash between the commit and the `DEL`
+ * replays the whole transaction, and a commit whose acknowledgement was lost reports an error over work
+ * that landed. Only the collection can say which happened, so the recovery asks it the same question the
+ * body asked and reads the answer with `isOurs`. An `_id` check would only have covered the insert — a
+ * restore mints no id — and would have failed a lost-ack restore that had in fact succeeded.
+ *
+ * @returns `true` when this call opened an account or handed one back, `false` when it was a replay of a
+ * confirmation that had already done so. Opened and restored are one answer on purpose: the welcome mail is
+ * the same either way, and telling the two apart would say what the platform still holds about an address.
  */
 async function openAccount(target: IRegistrationTarget, record: IPendingRegistration): Promise<boolean> {
 	const session = await mongoose.startSession()
+	let wrote = true
 
 	try {
 		await session.withTransaction(async () => {
-			await scrubClosedHolder(target, record.email, session)
+			const holder = await findAddressHolder(target, record, session)
 
-			await target.model.insertMany([accountDocument(target, record)], { session })
+			if (holder === null) {
+				await target.model.insertMany([accountDocument(target, record)], { session })
+
+				return
+			}
+
+			if (holder.deleted !== undefined) {
+				await target.model.updateOne({ _id: holder._id }, restoreUpdate(target, record), {
+					session,
+					runValidators: true
+				})
+
+				return
+			}
+
+			if (!isOurs(holder, record)) {
+				throw new Error(EMAIL_CHECK_LINK)
+			}
+
+			wrote = false
 		})
 	} catch (e: unknown) {
-		// Read outside the session: the transaction has aborted, and what is being asked is what the
-		// collection holds now.
-		if ((await target.model.exists({ _id: record._id })) === null) {
+		if (!isOurs(await findAddressHolder(target, record, null), record)) {
 			throw e
 		}
 
@@ -135,7 +182,7 @@ async function openAccount(target: IRegistrationTarget, record: IPendingRegistra
 		await session.endSession()
 	}
 
-	return true
+	return wrote
 }
 
 /**
@@ -162,6 +209,11 @@ async function openAccount(target: IRegistrationTarget, record: IPendingRegistra
  * ⚠️ **The key is deleted after the transaction, never before it.** Deleting first would turn any failure
  * of the write into a registration that cannot be retried and cannot be recovered — the person would have
  * to start again with an address that a closed account may still be holding.
+ *
+ * ⚠️ **Inside the retention window this flow is the undo, and it is the only one (ADR-046).** There is no
+ * "restore my account" login and there cannot be one: a closed account is refused at the login gate, so the
+ * person has no session from which to ask. Signing up again at the same address is the request, and the
+ * activation link is the proof — the same proof a password reset accepts.
  */
 export const createConfirmRegistration = (target: IRegistrationTarget) =>
 	async function confirmRegistration(uEmail: string, hash: string): Promise<void> {

@@ -12,13 +12,6 @@ import {
 import { ALGORITHM_DETERMINISTIC } from '@axiumine/marketplace-common/encryption/EncryptionAlgorithm'
 import { encryptValue } from '@axiumine/marketplace-common/encryption/fieldEncryption'
 import { isCiphertext } from '@axiumine/marketplace-common/encryption/isCiphertext'
-import {
-	SCRUBBED_FIRST_NAME,
-	SCRUBBED_LAST_NAME,
-	SCRUBBED_PASSWORD_HASH,
-	SCRUBBED_TEXT,
-	scrubbedEmail
-} from '@axiumine/marketplace-common/others/accountScrub'
 import bcrypt from '@node-rs/bcrypt'
 import * as dotenv from 'dotenv'
 import type { Server } from 'http'
@@ -580,11 +573,16 @@ async function accountsByEmail(tier: Tier, email: string) {
 		.toArray()
 }
 
-/** Closes an account the way the admin service will: a stamp, and nothing removed. */
+/**
+ * Closes an account the way the admin service will: two stamps, and nothing removed.
+ *
+ * `deletedBy` names the actor (ADR-044) and is here so the restore can be shown to clear it — a
+ * `deletedBy` left behind on a live account names an operator who closed something that is open.
+ */
 async function closeShopOwner(_id: mongoose.Types.ObjectId) {
 	await db()
 		.collection('shopOwner')
-		.updateOne({ _id }, { $set: { deleted: new Date() } })
+		.updateOne({ _id }, { $set: { deleted: new Date(), deletedBy: new mongoose.Types.ObjectId() } })
 }
 
 describe('a submitted registration is a Redis record and nothing else', () => {
@@ -731,7 +729,7 @@ describe('the activation link is what opens the account', () => {
 	})
 })
 
-describe('a closed account holds its address until somebody proves they can read mail at it', () => {
+describe('a closed account is handed back to whoever proves they can read mail at its address', () => {
 	// The first half of the platform owner's rule, and the reason submit writes nothing: for the whole
 	// three days the registration is pending, the closed document is exactly as its owner left it.
 	it('is untouched while the new registration is only pending', async () => {
@@ -742,22 +740,18 @@ describe('a closed account holds its address until somebody proves they can read
 
 		const closed = await shopOwnerById(_id)
 		expect(closed?.login.email).toBe(email)
-		expect(closed).not.toHaveProperty('scrubbedAt')
+		expect(closed?.deleted).toBeInstanceOf(Date)
 	})
 
-	// ⚠️ **The claim no mock can make.** `login.email_unique` carries no `partialFilterExpression`
-	// (ADR-011), so the closed document holds the address until its value moves — and MongoDB enforces
-	// a unique index at each write rather than at commit, so scrub-then-insert inside one transaction
-	// is the only ordering that works. The unit suite proves the calls are in that order; this proves
-	// the order is enough.
-	//
-	// The scrub is `buildAccountScrub`, the same update the day-30 retention sweep runs, and it goes
-	// through Mongoose with `runValidators: true` — so the plugin encrypts the `$set` on the way past
-	// and the collection's own `$jsonSchema` gets a vote. `shopOwner.personalData` is all-or-nothing:
-	// its `required` list names five members and `address`'s names four of its own, so a scrub that
-	// wrote the customer's two-field shape here would be refused by the server.
-	it('is scrubbed and replaced at the click, past login.email_unique', async () => {
-		const { _id: closedId, email } = await seedShopOwner()
+	// ⚠️ **The claim no mock can make** — ADR-046, the platform owner's ruling of 2026-08-29: *"the 30
+	// days windows is for undo too"*, and *"inside 1–30 days, signing up again at the same address
+	// restores the old account"*. `login.email_unique` carries no `partialFilterExpression` (ADR-011),
+	// so the address never moved off the closed document and the same lookup that refuses a duplicate
+	// finds the account to hand back. The unit suite proves the update is built right; this proves the
+	// collection accepts it — the update goes through Mongoose with `runValidators: true`, so the plugin
+	// encrypts the `$set` on the way past and the `$jsonSchema` gets a vote on what is left behind.
+	it('comes back at the click, with its id and everything hanging off it', async () => {
+		const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
 		await closeShopOwner(closedId)
 		const before = await shopOwnerById(closedId)
 
@@ -765,43 +759,80 @@ describe('a closed account holds its address until somebody proves they can read
 
 		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		// One holder of the address, and it is the account this click opened.
+		// One holder of the address, and it is the account that was already there — not the `_id` the
+		// submit minted, which is the whole difference between an undo and a second account.
 		const holders = await accountsByEmail('shopOwner', email)
 		expect(holders).toHaveLength(1)
-		expect(holders[0]._id.equals(record._id)).toBe(true)
+		expect(holders[0]._id.equals(closedId)).toBe(true)
+		await expect(shopOwnerById(record._id)).resolves.toBeNull()
 
-		// The row stays, the person does not (ADR-041). Everything that says *who* they were is
-		// overwritten; everything that records *that they held an account* survives.
-		const closed = await shopOwnerById(closedId)
-		expect(closed?.login.email).toBe(scrubbedEmail(`${closedId}`))
-		expect(closed?.login.password).toBe(SCRUBBED_PASSWORD_HASH)
-		expect(closed?.personalData.firstName).toBe(SCRUBBED_FIRST_NAME)
-		expect(closed?.personalData.lastName).toBe(SCRUBBED_LAST_NAME)
-		expect(closed?.personalData.address.city).toBe(SCRUBBED_TEXT)
-		expect(closed?.personalData.contacts.email).toBe(scrubbedEmail(`${closedId}`))
-		expect(closed?.scrubbedAt).toBeInstanceOf(Date)
-		expect(closed?.deleted).toEqual(before?.deleted)
-		expect(closed?.registeredAt).toEqual(before?.registeredAt)
+		const back = await shopOwnerById(closedId)
+		expect(back).not.toHaveProperty('deleted')
+		expect(back).not.toHaveProperty('deletedBy')
+		expect(back?.emailVerify.valid).toBe(true)
+		expect(back?.registeredAt).toEqual(before?.registeredAt)
+		expect(back?.personalData.firstName).toBe('Itest')
+		expect(back?.personalData.contacts.email).toBe(email)
+
+		// The credential is the one just chosen, and the one the account carried before the closure is
+		// gone: nothing may outlive a closure that could be used to log in as the account before it.
+		expect(back?.login.password).not.toBe(before?.login.password)
+		await expect(bcrypt.verify(REGISTRATION_PASSWORD, back?.login.password as string)).resolves.toBe(true)
 	})
 
-	// ⚠️ **`deleted` is in the scrub's filter, not merely checked by the caller**, and this is what
-	// proves the clause carries weight. Submit already refused the live case, so no browser can get
-	// here — the guard is for the caller that does not exist yet. A live account is not scrubbed, the
-	// insert is refused by the index, and the failure is loud: no account is opened, the live document
-	// keeps everything, and the record survives so the click can be retried once the collision is dealt
-	// with. `/x/error` rather than `/x/email-check` because the driver's message is not a safe redirect
-	// target and the handler's allowlist refuses it — which is also the only thing standing between a
-	// message derived from a request parameter and an open redirect.
-	it('refuses loudly rather than scrubbing a live account holding the address', async () => {
+	// ⚠️ The platform owner's ruling in the same breath: *"the state of waitApprove is true, so admin can
+	// not approve the user if it is a problem"*. Coming back is re-entry through the door a first
+	// registration uses, so the operator gets the same veto over a returning seller as over a new one —
+	// and it is the only human checkpoint on somebody registering at a recycled mailbox.
+	it('goes back in front of the operator rather than straight into a shop', async () => {
+		const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
+		await closeShopOwner(closedId)
+
+		const { record } = await submitRegistration('shopOwner', email)
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+
+		expect((await shopOwnerById(closedId))?.waitApprov).toBe(true)
+		expect(sent).toEqual([['sendWelcome', email]])
+	})
+
+	// ⚠️ **An undo the subject performs on themselves is not a way out of a suspension.** Only the Admin
+	// tier lifts one (ADR-044), so a suspended-then-closed account comes back suspended and is refused at
+	// the login gate exactly as it was before. The `disabledReason` is what makes this document writable
+	// at all — the validator carries `dependencies: { disabled: ['disabledReason'] }`, so an update that
+	// touched the suspension would have to supply one, and this one deliberately does not touch it.
+	it('comes back suspended when that is how it was closed', async () => {
+		const { _id: closedId, email } = await seedShopOwner(
+			{},
+			{ disabled: true, disabledReason: 'itest suspension', waitApprov: true }
+		)
+		await closeShopOwner(closedId)
+
+		const { record } = await submitRegistration('shopOwner', email)
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+
+		const back = await shopOwnerById(closedId)
+		expect(back?.disabled).toBe(true)
+		expect(back?.disabledReason).toBe('itest suspension')
+		expect(back).not.toHaveProperty('deleted')
+	})
+
+	// ⚠️ **The address is the only thing either collection indexes uniquely, so a live holder is a real
+	// answer and not an error to route around.** Submit already refused the live case, so no browser can
+	// get here — this is the two-people-one-address race, where both submitted before either clicked and
+	// the first click opened the account. The loser is refused at the same check-your-mail page every
+	// other refusal on this route answers with: which of the two they are is only ever visible to
+	// somebody who can read the mailbox, and the record survives so nothing is silently spent.
+	it('refuses rather than touching a live account holding the address', async () => {
 		const { email, record, slot } = await submitRegistration('shopOwner')
 		const { _id: liveId } = await seedShopOwner({ email })
+		const before = await shopOwnerById(liveId)
 
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/error')
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
 
 		const holders = await accountsByEmail('shopOwner', email)
 		expect(holders).toHaveLength(1)
 		expect(holders[0]._id.equals(liveId)).toBe(true)
-		expect(holders[0]).not.toHaveProperty('scrubbedAt')
+		expect((await shopOwnerById(liveId))?.login.password).toBe(before?.login.password)
 
 		await expect(redisClient.exists(slot.key)).resolves.toBe(1)
 	})

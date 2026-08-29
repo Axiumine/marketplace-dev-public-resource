@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
-import { createVerifyEmailFlow } from '@axiumine/koa-utils/lib/access/createVerifyEmailFlow'
-import type { IVerifyEmailMailer } from '@axiumine/koa-utils/lib/access/verifyEmailMailer'
 import { decryptDocument } from '@axiumine/marketplace-common/encryption/decryptDocument'
 import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
 import {
@@ -14,22 +12,83 @@ import {
 import { ALGORITHM_DETERMINISTIC } from '@axiumine/marketplace-common/encryption/EncryptionAlgorithm'
 import { encryptValue } from '@axiumine/marketplace-common/encryption/fieldEncryption'
 import { isCiphertext } from '@axiumine/marketplace-common/encryption/isCiphertext'
-import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
+import {
+	SCRUBBED_FIRST_NAME,
+	SCRUBBED_LAST_NAME,
+	SCRUBBED_PASSWORD_HASH,
+	SCRUBBED_TEXT,
+	scrubbedEmail
+} from '@axiumine/marketplace-common/others/accountScrub'
 import bcrypt from '@node-rs/bcrypt'
 import * as dotenv from 'dotenv'
 import type { Server } from 'http'
 import mongoose from 'mongoose'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 // The sources call dotenv.config() transitively (MongoDB/Redis datasources); this is a
 // belt-and-suspenders load so the values are present when this file's top level reads them.
 dotenv.config()
 
+/****************************************************************************************
+ * The three mail edges, recorded instead of sent — and the only mocks in this file.
+ *
+ * Every notification this service can produce goes out through SocketLabs, from a real account with
+ * a real reputation, and three of them are reachable from an unauthenticated `GET` while two more
+ * are reachable from an unauthenticated mutation. The integration environment pins placeholder
+ * credentials for that reason (see vitest.config.mts), so an unmocked send here would be an outbound
+ * HTTPS call that fails and turns a passing branch into a thrown one.
+ *
+ * Recording them is what makes the whole registration chain drivable against real stores: the
+ * activation hash arrives here exactly as it would arrive in somebody's inbox, and the tests below
+ * click the link with it.
+ *
+ * ⚠️ The mailer is mocked at the module that *builds* it, not at `SocketLabsLib`. `registrationMailer`
+ * is a value — one throttle for the process, shared by submit, confirm and resend — so the flows keep
+ * their production bindings and only the far end of them is a recorder.
+ ****************************************************************************************/
+
+const { sent, sentLinks } = vi.hoisted(() => ({
+	/** `[method, address, …]` for every guard notification the flows raised. */
+	sent: [] as Array<Array<string | number>>,
+	/** Every activation link that would have been mailed, by tier. */
+	sentLinks: [] as Array<{ tier: string; email: string; hash: string }>
+}))
+
+vi.mock('../../src/lib/registration/registrationMailer.mts', () => ({
+	registrationMailer: {
+		emailAlreadyValid: async (email: string) => void sent.push(['emailAlreadyValid', email]),
+		wrongHash: async (email: string, times: number) => void sent.push(['wrongHash', email, times]),
+		tooMuchVerifyRequests: async (email: string) => void sent.push(['tooMuchVerifyRequests', email]),
+		hashReqTooOld: async (email: string) => void sent.push(['hashReqTooOld', email]),
+		accountDisabled: async (email: string) => void sent.push(['accountDisabled', email]),
+		sendWelcome: async (email: string) => void sent.push(['sendWelcome', email])
+	}
+}))
+
+// `importOriginal` because the route path each module exports is imported by the tests below to build
+// the URL they call: replacing the send must not replace the literal that says where the link points.
+vi.mock('../../src/lib/access/sendUserVerifyEmail.mts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../../src/lib/access/sendUserVerifyEmail.mts')>()),
+	sendUserVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'user', email, hash })
+}))
+
+vi.mock('../../src/lib/access/sendShopOwnerVerifyEmail.mts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../../src/lib/access/sendShopOwnerVerifyEmail.mts')>()),
+	sendShopOwnerVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'shopOwner', email, hash })
+}))
+
 import { ENDPOINT, start } from '../../src/index.mts'
-import { VERIFY_EMAIL_PATHS } from '../../src/lib/access/verifyEmailFlow.mts'
-import { purgeClosedUser } from '../../src/lib/db/purgeClosedUser.mts'
-import { registerNewShopOwner } from '../../src/lib/db/registerNewShopOwner.mts'
-import { registerNewUser } from '../../src/lib/db/registerNewUser.mts'
+import { SHOP_OWNER_VERIFY_LINK_PATH } from '../../src/lib/access/sendShopOwnerVerifyEmail.mts'
+import { USER_VERIFY_LINK_PATH } from '../../src/lib/access/sendUserVerifyEmail.mts'
+import {
+	MAX_VERIFY_ATTEMPTS,
+	PENDING_TTL_SECONDS,
+	pendingSlot,
+	readPendingRegistration,
+	writePendingRegistration
+} from '../../src/lib/registration/pendingRegistration.mts'
+import { REGISTRATION_TARGET_SHOP_OWNER, REGISTRATION_TARGET_USER } from '../../src/lib/registration/registrationTargets.mts'
+import { submitShopOwnerRegistration, submitUserRegistration } from '../../src/lib/registration/submitRegistration.mts'
 
 const REDIS_KEY = process.env.REDIS_KEY as string
 
@@ -61,6 +120,12 @@ async function gql(query: string, variables?: Record<string, unknown>) {
  ****************************************************************************************/
 
 const seededShopOwnerIds: mongoose.Types.ObjectId[] = []
+
+/** Accounts opened by a registration this run confirmed, and the ids it minted for them. */
+const registeredIds: Array<{ collection: 'user' | 'shopOwner'; _id: mongoose.Types.ObjectId }> = []
+
+/** Pending-registration keys this run wrote. Their own TTL is three days, so they need draining. */
+const pendingKeys: string[] = []
 
 /** The raw driver handle — only defined once start() has connected. */
 function db() {
@@ -183,6 +248,10 @@ afterAll(async () => {
 	}
 	for (const { collection, _id } of registeredIds) {
 		await drainSafely(`${collection} ${_id.toString()}`, () => db().collection(collection).deleteOne({ _id }))
+	}
+	// Redis last, and one key at a time: a multi-key DEL is a CROSSSLOT error on a cluster.
+	for (const key of pendingKeys) {
+		await drainSafely(`pending registration ${key}`, () => redisClient.del(key))
 	}
 	await new Promise<void>((resolve) => httpServer.close(() => resolve()))
 	await redisClient.close()
@@ -322,7 +391,10 @@ describe('resetPwd / updatePwd against a real seeded shopOwner (refusal branches
 	}
 
 	it('resetPwd leaves a disabled account untouched: true is returned, no resetPwd sub-document is written', async () => {
-		const { _id, email } = await seedShopOwner({}, { disabled: true })
+		// ⚠️ `disabledReason` is not decoration: the validator carries `dependencies: { disabled:
+		// ['disabledReason'] }`, so a suspension with no reason is a document the server refuses
+		// outright (the platform owner's rule of 2026-08-29). A seed is held to it like any other write.
+		const { _id, email } = await seedShopOwner({}, { disabled: true, disabledReason: 'itest suspension' })
 
 		const { json } = await gql(resetPwdMutation, { email })
 		expect(json.errors).toBeUndefined()
@@ -398,231 +470,394 @@ describe('resetPwd / updatePwd against a real seeded shopOwner (refusal branches
 		const seededHash = 'f'.repeat(50)
 		const { _id, email } = await seedShopOwner(
 			{},
-			{ disabled: true, resetPwd: { resetDateReq: new Date(), resetHash: seededHash } }
+			{ disabled: true, disabledReason: 'itest suspension', resetPwd: { resetDateReq: new Date(), resetHash: seededHash } }
 		)
 
 		await expectUpdatePwdRefused(_id, email, seededHash)
 	})
 })
 
-/*
- * The route this block covers used to be documented here as an outright bug, and the two tests below
- * are what is left of that report once it was fixed. The handler mounted at
- * `GET /check/verify-email/:email/:hash` was koa-utils' own `routerVerifyEmail()` export — the one
- * pre-bound to its bundled `UserBase` model, collection 'user', with DEFAULT_VERIFY_EMAIL_PATHS. No
- * migration on this platform creates a 'user' collection, so `userData4VerifyEmail` always answered
- * null and the route always took the "email not found" branch: no verification link ever worked, for
- * anyone, including one carrying a correct hash for a real account.
+/****************************************************************************************
+ * Registration, against the two stores it really spans.
  *
- * It is now built by `createVerifyEmailFlow` in src/lib/access/verifyEmailFlow.mts, the same shape
- * resetPwdFlow.mts uses, against the `emailVerify` sub-document added to the collection by
- * marketplace-db-setup's 20260726000000-alter-shopOwner-emailVerify migration.
+ * ADR-042 moved the pending half of a registration out of MongoDB and into Redis; ADR-043 made the
+ * Redis record carry the address as the very ciphertext the collection indexes, so the confirm step
+ * is a copy rather than a second encryption. Both claims are about what two live stores do with each
+ * other, and neither is visible to a mocked model: the unit suite proves `confirmRegistration` runs
+ * the scrub before the insert, but only a real `login.email_unique` proves that order is *enough*,
+ * and only a real `$jsonSchema` proves the copied `Binary` is a document the collection accepts.
  *
- * Every test here drives the MOUNTED route, so it runs the production flow — SocketLabs mailer and
- * all. That limits it to the two branches that send nothing: `userData4VerifyEmail`'s not-found path,
- * which only calls `Sentry.captureMessage` (a no-op here — src/instrument.mts is never imported by the
- * integration project) before throwing EMAIL_CHECK_LINK, and `handleBadDB`, which does the same. The
- * rest of the chain is driven against the same collection in the next describe, through a flow built
- * with a recording mailer.
+ * ⚠️ **Three edges are mocked and only three, all of them mail.** `registrationMailer` and the two
+ * link senders are recorded instead of sent — see the mock block at the top of this file. Everything
+ * between the form and the account is the production path: the encryption, the Redis record and its
+ * TTL, the transaction, the scrub, the unique index, the mounted route and the redirect it answers.
  *
- * ⚠️ All three redirect to the SAME page, and that is a fix rather than a loss of resolution. Through
- * koa-utils 5.6.1 `handleBadDB` threw '/x/error' while an unknown address threw EMAIL_CHECK_LINK, and
- * the pair answered an unauthenticated GET with two distinguishable responses — on data predating the
- * verification fields, where every real shopOwner hit handleBadDB and every unknown address did
- * not, that was a clean account-existence oracle. 5.7.0 sends both to EMAIL_CHECK_LINK and keeps the
- * distinction in Sentry. The proof that the lookup lands on `shopOwner` therefore moved off the
- * redirect and onto the database: the seeded document is read back below, and the chain describe that
- * follows writes to it.
+ * ⚠️ **Every refusal below lands on the same page**, and that is the property rather than a loss of
+ * resolution. A dead link, a wrong hash, a spent record and a link for the other tier all answer
+ * `/x/email-check`, so an unauthenticated `GET` cannot be used to ask whether an address is
+ * registered here. The one page that differs is `/x/error`, and it is reached only by a failure that
+ * says nothing about the address — see the live-holder collision below.
+ ****************************************************************************************/
+
+/** The one plaintext every registration in this file is opened with. */
+const REGISTRATION_PASSWORD = 'itest-registration-plaintext'
+
+type Tier = 'user' | 'shopOwner'
+
+/**
+ * Everything the two tiers differ by, as this file needs it.
+ *
+ * `linkPath` is imported from the sender rather than written out, so this suite fails if the link
+ * that goes in the mail and the route this service mounts ever drift apart. That pair is two
+ * literals in two files with nothing joining them at run time — the failure mode their own comments
+ * warn about is a link that 404s, and only a test that builds the URL from one and calls the other
+ * notices.
  */
-describe('GET /check/verify-email/:email/:hash bound to the shopOwner collection', () => {
-	it('redirects to the email-check page for an address that belongs to no shopOwner', async () => {
-		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(itestEmail())}/${'x'.repeat(50)}`)
+const TARGETS = {
+	user: {
+		keyAltName: KEY_ALT_NAME_USER,
+		linkPath: USER_VERIFY_LINK_PATH,
+		submit: submitUserRegistration,
+		target: REGISTRATION_TARGET_USER
+	},
+	shopOwner: {
+		keyAltName: KEY_ALT_NAME_SHOP_OWNER,
+		linkPath: SHOP_OWNER_VERIFY_LINK_PATH,
+		submit: submitShopOwnerRegistration,
+		target: REGISTRATION_TARGET_SHOP_OWNER
+	}
+} as const
 
-		expect(res.redirected).toBe(true)
-		expect(res.url).toBe(`${base}/x/email-check`)
+/**
+ * Submits a registration exactly as the resolver does, and hands back what the click needs.
+ *
+ * The pending key and the account's `_id` are registered for the afterAll drain here — the `_id` is
+ * minted at submit, so it is drainable before the document it names exists, which is the same
+ * property that makes a replayed confirmation safe.
+ *
+ * ⚠️ It clears the two mail recorders, so a test that asserts on the mail is asserting on what its
+ * own submit and clicks produced. The one caller that must see a mail sent *by* the submit does not
+ * come through here.
+ */
+async function submitRegistration(tier: Tier, email = itestEmail(), password = REGISTRATION_PASSWORD) {
+	sent.length = 0
+	sentLinks.length = 0
+
+	await TARGETS[tier].submit(email, password)
+
+	const slot = await pendingSlot(TARGETS[tier].target, email)
+	pendingKeys.push(slot.key)
+
+	const record = await readPendingRegistration(slot.key)
+	if (record === null) throw new Error(`submit wrote no pending record for ${email}`)
+
+	registeredIds.push({ collection: tier, _id: record._id })
+
+	return { email, password, record, slot }
+}
+
+/**
+ * Clicks an activation link over HTTP, on the route this service really mounts, and answers the page
+ * the browser ended on.
+ *
+ * The redirect itself is asserted in here because every branch of the confirm ends in one: there is
+ * no path through this handler that renders a body, so a response that was not a redirect is a
+ * failure whichever test hit it.
+ */
+async function click(tier: Tier, email: string, hash: string) {
+	const res = await fetch(`${base}${TARGETS[tier].linkPath}/${encodeURIComponent(email)}/${hash}`)
+
+	expect(res.redirected).toBe(true)
+
+	return res.url.slice(base.length)
+}
+
+/** Every document of a tier holding an address, found the only way there is: by the ciphertext. */
+async function accountsByEmail(tier: Tier, email: string) {
+	return await db()
+		.collection(tier)
+		.find({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, TARGETS[tier].keyAltName) })
+		.toArray()
+}
+
+/** Closes an account the way the admin service will: a stamp, and nothing removed. */
+async function closeShopOwner(_id: mongoose.Types.ObjectId) {
+	await db()
+		.collection('shopOwner')
+		.updateOne({ _id }, { $set: { deleted: new Date() } })
+}
+
+describe('a submitted registration is a Redis record and nothing else', () => {
+	// ⚠️ The claim ADR-042 rests on, and the one the platform owner asked for in those words: a closed
+	// account's address is reclaimed "when he will click the link to confirm the email, not before
+	// that". An anonymous form post is not a click, so until one arrives nothing exists in MongoDB.
+	it('writes no document, and a key that expires on its own', async () => {
+		const { email, slot } = await submitRegistration('user')
+
+		await expect(accountsByEmail('user', email)).resolves.toEqual([])
+
+		// The three-day window is the key's own TTL now, so an abandoned registration is not a state
+		// anybody has to notice — which is what the old lazily-evaluated guard could never manage.
+		const ttl = await redisClient.ttl(slot.key)
+		expect(ttl).toBeLessThanOrEqual(PENDING_TTL_SECONDS)
+		expect(ttl).toBeGreaterThan(PENDING_TTL_SECONDS - 60)
 	})
 
-	it('reaches a real shopOwner, stops at handleBadDB, and writes nothing', async () => {
-		// No `emailVerify` at all: the shopOwner exists but has never been sent a verification link.
-		// userData4VerifyEmail projects hash/valid/dateLastReq/requestTimes/deleted/disabled, .lean()
-		// returns undefined for the absent ones, and handleBadDB reads a missing requestTimes as
-		// corrupt state rather than "never requested" — so it throws before any guard that would
-		// construct a SocketLabsLib runs.
-		const { _id, email } = await seedShopOwner()
+	// ⚠️ ADR-043, against the real cipher: the record holds the address as the deterministic
+	// ciphertext MongoDB indexes, so the same bytes key the record, find the account and get inserted.
+	// A `sha256` would key the record just as well and would put a second representation of the
+	// address on this path; a plaintext one would put personal data in Redis in the clear.
+	it('keeps the address as the ciphertext the collection indexes, never in the clear', async () => {
+		const { email, slot } = await submitRegistration('user')
 
-		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(email)}/${'x'.repeat(50)}`)
+		const stored = await redisClient.hGetAll(slot.key)
+		const ciphertext = await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER)
 
-		expect(res.redirected).toBe(true)
-		expect(res.url).toBe(`${base}/x/email-check`)
+		expect(stored.email).toBe(Buffer.from(ciphertext.buffer).toString('hex'))
 
-		// enableEmailAccess was never reached: nothing was written to the seeded document.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.login.email).toBe(email)
-		expect(doc?.emailVerify).toBeUndefined()
+		// The local part alone, so this fails on a record that carries the address in any field at all
+		// rather than only on one that carries it whole.
+		expect(JSON.stringify(stored)).not.toContain(email.split('@')[0])
 	})
 
-	// The same guard, one step further in: `hash` and `dateLastReq` present, `requestTimes` absent.
-	// handleBadDB checks requestTimes and dateLastReq independently, and a hash stored without its
-	// strike counter is exactly the corrupt state it exists to catch — a wrong-hash attempt would
-	// otherwise increment `undefined`. This is a real emailVerify sub-document being read back through
-	// the paths map, so it also pins that VERIFY_EMAIL_PATHS resolves against the live validator.
-	it('stops at handleBadDB for an emailVerify holding a hash but no requestTimes', async () => {
-		const { _id, email } = await seedShopOwner({}, { emailVerify: { hash: 'x'.repeat(50), dateLastReq: new Date() } })
+	// bcrypt at submit rather than at confirm, so the plaintext dies with the request that carried it.
+	// It is also what makes the confirm's `insertMany` correct: no `save` middleware runs there, so
+	// this value lands in `login.password` exactly as it is — hashing in both places is what stored
+	// `bcrypt(bcrypt(password))` in E18-S09 and opened accounts nobody could log in to.
+	it('bcrypts the password once, at submit', async () => {
+		const { password, slot } = await submitRegistration('user')
 
-		const res = await fetch(`${base}/check/verify-email/${encodeURIComponent(email)}/${'x'.repeat(50)}`)
+		const stored = await redisClient.hGetAll(slot.key)
 
-		expect(res.redirected).toBe(true)
-		expect(res.url).toBe(`${base}/x/email-check`)
+		expect(stored.password).toMatch(/^\$2[aby]\$/)
+		await expect(bcrypt.verify(password, stored.password)).resolves.toBe(true)
+	})
 
-		// The stored hash is untouched and `valid` was never set — the guard fired before the write.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.emailVerify.hash).toBe('x'.repeat(50))
-		expect(doc?.emailVerify.valid).toBeUndefined()
+	it('mails the link the record was written with', async () => {
+		const { email, record } = await submitRegistration('user')
+
+		expect(sentLinks).toEqual([{ tier: 'user', email, hash: record.hash }])
+	})
+
+	// The live branch: the address is taken, so the person who owns it is told and nothing is written.
+	// The caller still answers `true` — the outcomes are distinguishable only in the inbox.
+	it('mails the live holder and writes no record when the address is already registered', async () => {
+		const { email } = await seedShopOwner()
+		sent.length = 0
+
+		await submitShopOwnerRegistration(email, REGISTRATION_PASSWORD)
+
+		const slot = await pendingSlot(REGISTRATION_TARGET_SHOP_OWNER, email)
+		await expect(readPendingRegistration(slot.key)).resolves.toBeNull()
+		expect(sent).toEqual([['emailAlreadyValid', email]])
 	})
 })
 
-/*
- * The rest of the chain, against the same collection and the same paths map, through a flow built here
- * with a recording mailer instead of SocketLabs.
- *
- * This describe exists because koa-utils 5.7.0 made it possible. Through 5.6.1 every guard constructed
- * its own `SocketLabsLib` inline and `enableEmailAccess` sent the welcome mail itself, so no branch
- * past the two above could be reached without mailing a real address from the live production account
- * — the success path included. `mailer` is now an option, and a flow that records instead of sending
- * turns the whole chain into something a real database can be pointed at.
- *
- * The flow is built here rather than imported, because the production one is bound to the real mailer
- * at module load. What keeps that honest is the unit suite: test/verifyEmailFlow.test.mts asserts the
- * exact argument object src/lib/access/verifyEmailFlow.mts passes, so the only difference between the
- * two flows is the `mailer` key added below. Everything else — model, paths, disposal policy — is
- * imported from the module under test rather than restated.
- */
-describe('verify-email chain against real MongoDB, with a recording mailer', () => {
-	const sent: Array<[string, string]> = []
+describe('the activation link is what opens the account', () => {
+	it('opens a customer account out of the record, and drops the key', async () => {
+		const { email, password, record, slot } = await submitRegistration('user')
 
-	const recordingMailer: IVerifyEmailMailer = {
-		emailAlreadyValid: async (email) => void sent.push(['emailAlreadyValid', email]),
-		wrongHash: async (email) => void sent.push(['wrongHash', email]),
-		tooMuchVerifyRequests: async (email) => void sent.push(['tooMuchVerifyRequests', email]),
-		hashReqTooOld: async (email) => void sent.push(['hashReqTooOld', email]),
-		accountDisabled: async (email) => void sent.push(['accountDisabled', email]),
-		sendWelcome: async (email) => void sent.push(['sendWelcome', email])
-	}
+		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
 
-	const flow = createVerifyEmailFlow({
-		model: ShopOwner,
-		paths: VERIFY_EMAIL_PATHS,
-		onAbandon: 'soft-delete',
-		deletedValue: () => new Date(),
-		mailer: recordingMailer
+		const [account] = await accountsByEmail('user', email)
+
+		// The `_id` was minted at submit, three days before this click was allowed to happen.
+		expect(account._id.equals(record._id)).toBe(true)
+		expect(account.registeredAt).toEqual(record.registeredAt)
+
+		// `emailVerify` keeps `valid` and nothing else: the hash, the window and the strike counter
+		// were the pending state, and the pending state was the Redis key.
+		expect(account.emailVerify).toEqual({ valid: true })
+		expect(account).not.toHaveProperty('waitApprov')
+		expect(account).not.toHaveProperty('personalData')
+
+		// ⚠️ Byte for byte what Redis held. Nothing on the confirm path encrypts anything — the
+		// model's `pre('insertMany')` pass is idempotent over a `Binary` subtype 6, which is the only
+		// reason a copy is safe to hand it.
+		expect(isCiphertext(account.login.email)).toBe(true)
+		expect(Buffer.from(account.login.email.buffer)).toEqual(Buffer.from(record.email.buffer))
+
+		// And it is a ciphertext this collection's own key produced, not merely some ciphertext.
+		expect(account.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER))
+
+		await expect(bcrypt.verify(password, account.login.password)).resolves.toBe(true)
+		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
 	})
 
-	/**
-	 * Drive the real handler with the smallest ctx @koa/router would hand it: the route reads
-	 * `ctx.params` and calls `ctx.redirect`, and nothing else. Returning the redirect target rather
-	 * than asserting on a Response keeps this identical in shape to the mounted-route tests above.
-	 */
-	async function callRoute(email: string, hash: string) {
-		let target = ''
-		const ctx = { params: { email, hash }, redirect: (to: string) => void (target = to) }
+	// ⚠️ `waitApprov` is written here or nowhere. Selling on the platform is a commercial relationship
+	// with the operator, so a stranger may ask to become a shop owner but may not become one by
+	// filling in a form — and before ADR-042 the flag lived on a document a public mutation could
+	// reach, which is how the deleted restart path revived an account with the gate already cleared.
+	it('opens a shop owner parked behind the approval queue', async () => {
+		const { email, record } = await submitRegistration('shopOwner')
 
-		await flow.routerVerifyEmail()(ctx as never)
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		return target
-	}
+		const [account] = await accountsByEmail('shopOwner', email)
 
-	const VALID_HASH = 'a'.repeat(50)
-
-	it('honours a correct link: sets valid, clears the three token members, sends the welcome', async () => {
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
-		)
-
-		expect(await callRoute(email, VALID_HASH)).toBe('/x/registration-done')
-
-		// `valid` survives and the three token members are gone — which is the whole reason
-		// VERIFY_EMAIL_PATHS.verifyClear lists leaves rather than the `emailVerify` container.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.emailVerify).toEqual({ valid: true })
-		expect(sent).toContainEqual(['sendWelcome', email])
+		expect(account.waitApprov).toBe(true)
+		expect(account.emailVerify).toEqual({ valid: true })
 	})
 
-	it('counts a wrong hash as a strike and leaves the account otherwise untouched', async () => {
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
-		)
+	it('sends one welcome mail, and refuses the second click on the link it honoured', async () => {
+		const { email, record } = await submitRegistration('user')
 
-		expect(await callRoute(email, 'b'.repeat(50))).toBe('/x/email-check')
+		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+		expect(await click('user', email, record.hash)).toBe('/x/email-check')
 
-		const doc = await shopOwnerById(_id)
-		expect(doc?.emailVerify.requestTimes).toBe(2)
-		expect(doc?.emailVerify.valid).toBeUndefined()
-		expect(doc?.deleted).toBeUndefined()
-		expect(sent).toContainEqual(['wrongHash', email])
+		expect(sent).toEqual([['sendWelcome', email]])
+		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
 	})
 
-	// The reason the koa-utils change was asked for. Through 5.6.1 this branch was a hard `deleteOne`,
-	// and on `shopOwner` that removed the document while its `company` → `item` → `itemCategory` chain
-	// kept pointing at an idShopOwner that no longer resolved. The document surviving with a
-	// tombstone is the assertion; that the tombstone is a Date the strict validator accepts is the
-	// other half, and it is why `deletedValue` cannot be koa-utils' boolean default.
-	it('soft-deletes on the fifth strike: the document survives, tombstoned with a Date', async () => {
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 5 } }
-		)
+	// ⚠️ The tier is in the Redis key because `user` and `shopOwner` are unrelated collections
+	// (ADR-002) and one person may legitimately be both, at the same address, at the same time. The
+	// two routes differ only in path and both take an address, so a customer's link answered by the
+	// seller's confirm would open a `shopOwner` account for somebody who asked to be a customer.
+	it('will not confirm a customer registration on the seller route', async () => {
+		const { email, record } = await submitRegistration('user')
 
-		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
 
-		const doc = await shopOwnerById(_id)
-		expect(doc).not.toBeNull()
-		expect(doc?.deleted).toBeInstanceOf(Date)
-		expect(doc?.emailVerify.hash).toBe(VALID_HASH)
-		expect(sent).toContainEqual(['tooMuchVerifyRequests', email])
+		await expect(accountsByEmail('shopOwner', email)).resolves.toEqual([])
+		await expect(accountsByEmail('user', email)).resolves.toEqual([])
 	})
 
-	it('soft-deletes a link older than three days, correct hash and all', async () => {
-		const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ emailVerify: { hash: VALID_HASH, dateLastReq: fourDaysAgo, requestTimes: 1 } }
-		)
+	it('answers a link nobody ever submitted with the same page as a wrong one', async () => {
+		sent.length = 0
 
-		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
+		expect(await click('user', itestEmail(), 'x'.repeat(50))).toBe('/x/email-check')
 
-		const doc = await shopOwnerById(_id)
-		expect(doc).not.toBeNull()
-		expect(doc?.deleted).toBeInstanceOf(Date)
-		expect(sent).toContainEqual(['hashReqTooOld', email])
+		expect(sent).toEqual([])
+	})
+})
+
+describe('a closed account holds its address until somebody proves they can read mail at it', () => {
+	// The first half of the platform owner's rule, and the reason submit writes nothing: for the whole
+	// three days the registration is pending, the closed document is exactly as its owner left it.
+	it('is untouched while the new registration is only pending', async () => {
+		const { _id, email } = await seedShopOwner()
+		await closeShopOwner(_id)
+
+		await submitRegistration('shopOwner', email)
+
+		const closed = await shopOwnerById(_id)
+		expect(closed?.login.email).toBe(email)
+		expect(closed).not.toHaveProperty('scrubbedAt')
 	})
 
-	it('refuses a second use of an already-honoured link without touching the document', async () => {
-		const { _id, email } = await seedShopOwner({}, { emailVerify: { valid: true } })
+	// ⚠️ **The claim no mock can make.** `login.email_unique` carries no `partialFilterExpression`
+	// (ADR-011), so the closed document holds the address until its value moves — and MongoDB enforces
+	// a unique index at each write rather than at commit, so scrub-then-insert inside one transaction
+	// is the only ordering that works. The unit suite proves the calls are in that order; this proves
+	// the order is enough.
+	//
+	// The scrub is `buildAccountScrub`, the same update the day-30 retention sweep runs, and it goes
+	// through Mongoose with `runValidators: true` — so the plugin encrypts the `$set` on the way past
+	// and the collection's own `$jsonSchema` gets a vote. `shopOwner.personalData` is all-or-nothing:
+	// its `required` list names five members and `address`'s names four of its own, so a scrub that
+	// wrote the customer's two-field shape here would be refused by the server.
+	it('is scrubbed and replaced at the click, past login.email_unique', async () => {
+		const { _id: closedId, email } = await seedShopOwner()
+		await closeShopOwner(closedId)
+		const before = await shopOwnerById(closedId)
 
-		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
+		const { record } = await submitRegistration('shopOwner', email)
 
-		// handleIfEmailAlreadyValid is the first guard, so nothing further ran: no strike, no tombstone.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.emailVerify).toEqual({ valid: true })
-		expect(doc?.deleted).toBeUndefined()
-		expect(sent).toContainEqual(['emailAlreadyValid', email])
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+
+		// One holder of the address, and it is the account this click opened.
+		const holders = await accountsByEmail('shopOwner', email)
+		expect(holders).toHaveLength(1)
+		expect(holders[0]._id.equals(record._id)).toBe(true)
+
+		// The row stays, the person does not (ADR-041). Everything that says *who* they were is
+		// overwritten; everything that records *that they held an account* survives.
+		const closed = await shopOwnerById(closedId)
+		expect(closed?.login.email).toBe(scrubbedEmail(`${closedId}`))
+		expect(closed?.login.password).toBe(SCRUBBED_PASSWORD_HASH)
+		expect(closed?.personalData.firstName).toBe(SCRUBBED_FIRST_NAME)
+		expect(closed?.personalData.lastName).toBe(SCRUBBED_LAST_NAME)
+		expect(closed?.personalData.address.city).toBe(SCRUBBED_TEXT)
+		expect(closed?.personalData.contacts.email).toBe(scrubbedEmail(`${closedId}`))
+		expect(closed?.scrubbedAt).toBeInstanceOf(Date)
+		expect(closed?.deleted).toEqual(before?.deleted)
+		expect(closed?.registeredAt).toEqual(before?.registeredAt)
 	})
 
-	it('refuses a disabled account after the hash has already checked out', async () => {
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ disabled: true, emailVerify: { hash: VALID_HASH, dateLastReq: new Date(), requestTimes: 1 } }
-		)
+	// ⚠️ **`deleted` is in the scrub's filter, not merely checked by the caller**, and this is what
+	// proves the clause carries weight. Submit already refused the live case, so no browser can get
+	// here — the guard is for the caller that does not exist yet. A live account is not scrubbed, the
+	// insert is refused by the index, and the failure is loud: no account is opened, the live document
+	// keeps everything, and the record survives so the click can be retried once the collision is dealt
+	// with. `/x/error` rather than `/x/email-check` because the driver's message is not a safe redirect
+	// target and the handler's allowlist refuses it — which is also the only thing standing between a
+	// message derived from a request parameter and an open redirect.
+	it('refuses loudly rather than scrubbing a live account holding the address', async () => {
+		const { email, record, slot } = await submitRegistration('shopOwner')
+		const { _id: liveId } = await seedShopOwner({ email })
 
-		expect(await callRoute(email, VALID_HASH)).toBe('/x/email-check')
+		expect(await click('shopOwner', email, record.hash)).toBe('/x/error')
 
-		// The account-state gate runs last, so a disabled shopOwner gets this far with a correct
-		// hash and is still refused — and `valid` was never flipped.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.emailVerify.valid).toBeUndefined()
-		expect(sent).toContainEqual(['accountDisabled', email])
+		const holders = await accountsByEmail('shopOwner', email)
+		expect(holders).toHaveLength(1)
+		expect(holders[0]._id.equals(liveId)).toBe(true)
+		expect(holders[0]).not.toHaveProperty('scrubbedAt')
+
+		await expect(redisClient.exists(slot.key)).resolves.toBe(1)
+	})
+})
+
+describe('a replayed confirmation', () => {
+	// ⚠️ The failure ADR-042 names by hand: the confirm spans Redis and MongoDB and can only be
+	// idempotent, not atomic, so a crash between the commit and the `DEL` leaves a live key over a
+	// live account. The pre-minted `_id` is what makes the replay knowable — the insert fails on the
+	// duplicate, and a document carrying *this record's* `_id` can only have been written by an
+	// earlier run of this same confirmation. Re-writing the record here is that crash, exactly.
+	it('opens one account, mails one welcome, and still clears the key', async () => {
+		const { email, record, slot } = await submitRegistration('user')
+
+		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+
+		await writePendingRegistration(slot, record)
+
+		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+
+		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
+		expect(sent).toEqual([['sendWelcome', email]])
+		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+	})
+})
+
+describe('the strike counter belongs to the record, and does not buy time', () => {
+	// ⚠️ **A wrong hash spends a strike; it does not extend the window.** `strikePendingRegistration`
+	// is the one write on this path that must not go through the module's `writeRecord`, because that
+	// one re-arms the TTL — and a strike that re-armed it would let anybody keep somebody else's
+	// pending registration alive indefinitely by guessing at their link. The TTL is shortened first so
+	// a re-arm would be visible: on a fresh key both readings are three days and nothing is provable.
+	it('counts a wrong hash without re-arming the three-day window', async () => {
+		const { email, slot } = await submitRegistration('user')
+		await redisClient.expire(slot.key, 120)
+
+		expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
+
+		await expect(redisClient.hGet(slot.key, 'requestTimes')).resolves.toBe('2')
+		expect(await redisClient.ttl(slot.key)).toBeLessThanOrEqual(120)
+		expect(sent).toEqual([['wrongHash', email, 2]])
+		await expect(accountsByEmail('user', email)).resolves.toEqual([])
+	})
+
+	// The ceiling is checked before the hash, so the correct link no longer works either: at five
+	// strikes the link is being guessed at rather than clicked, and what is left of the registration
+	// is destroyed rather than left for the guesser to keep working on.
+	it('destroys a record whose five attempts are spent, and opens nothing', async () => {
+		const { email, record, slot } = await submitRegistration('user')
+		await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
+
+		expect(await click('user', email, record.hash)).toBe('/x/email-check')
+
+		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+		await expect(accountsByEmail('user', email)).resolves.toEqual([])
+		expect(sent).toEqual([['tooMuchVerifyRequests', email]])
 	})
 })
 
@@ -665,149 +900,6 @@ describe('personal fields at rest', () => {
 		// the shop-owner table in the admin frontend, which a ciphertext would order by its bytes.
 		expect(isCiphertext(stored?.login.password)).toBe(false)
 		expect(stored?.personalData.address.city).toBe('Springfield')
-	})
-})
-
-/****************************************************************************************
- * The half of registration a mocked model cannot see.
- *
- * Every other test of these two functions mocks `User` / `ShopOwner`, and a mock runs no document
- * middleware — so a suite at 100% coverage and mutation score 100 watched `registerNewUser` hash a
- * password that `LoginSubDocSchema`'s `pre('save')` then hashed again, and called it green. The
- * accounts that write opened could never log in: `loginUser` compares the plaintext against
- * `bcrypt(bcrypt(password))`. It was found by registering against the running stack (E18-S09), which
- * is the only place it was visible.
- *
- * These two tests are that observation, made permanent and cheap: write through the real model, read
- * the credential back with the raw driver, and ask bcrypt whether the plaintext still matches. Both
- * fail on a re-added `encryptPassword`, and both fail again if the hook is ever dropped from
- * marketplace-common — which is the other way this can break, and the one that would store a plaintext
- * password rather than an unusable hash.
- ****************************************************************************************/
-
-/** Registrations written through the real models, drained in afterAll alongside the raw-driver seeds. */
-const registeredIds: Array<{ collection: 'user' | 'shopOwner'; _id: mongoose.Types.ObjectId }> = []
-
-/** Both functions take the caller's session and expect to be inside its transaction, as the resolvers run them. */
-async function inTransaction(run: (session: mongoose.ClientSession) => Promise<unknown>) {
-	const session = await mongoose.startSession()
-
-	try {
-		await session.withTransaction(() => run(session))
-	} finally {
-		await session.endSession()
-	}
-}
-
-/**
- * Reads back the stored credential of a registration, by the only handle the caller has: the address.
- *
- * `login.email` is deterministically encrypted, so the filter has to carry the ciphertext the write
- * produced — the same trick the CSFLE describe above uses in the other direction. The read stays on the
- * raw driver deliberately: a model read would decrypt, and this assertion is about what is *on disk*.
- */
-async function storedPassword(collection: 'user' | 'shopOwner', email: string, keyAltName: string) {
-	const stored = await db()
-		.collection(collection)
-		.findOne({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, keyAltName) })
-
-	if (!stored) throw new Error(`registration wrote no ${collection} document for ${email}`)
-	registeredIds.push({ collection, _id: stored._id })
-
-	return stored.login.password as string
-}
-
-describe('registration writes a credential the login can verify', () => {
-	const PLAINTEXT = 'itest-registration-plaintext'
-
-	it('registerNewUser stores one bcrypt of the plaintext, not two', async () => {
-		const email = itestEmail()
-
-		await inTransaction((session) => registerNewUser(email, PLAINTEXT, session))
-
-		const password = await storedPassword('user', email, KEY_ALT_NAME_USER)
-
-		expect(password).toMatch(/^\$2[aby]\$/)
-		expect(password).not.toBe(PLAINTEXT)
-		await expect(bcrypt.verify(PLAINTEXT, password)).resolves.toBe(true)
-	})
-
-	it('registerNewShopOwner stores one bcrypt of the plaintext, not two', async () => {
-		const email = itestEmail()
-
-		await inTransaction((session) => registerNewShopOwner(email, PLAINTEXT, session))
-
-		const password = await storedPassword('shopOwner', email, KEY_ALT_NAME_SHOP_OWNER)
-
-		expect(password).toMatch(/^\$2[aby]\$/)
-		expect(password).not.toBe(PLAINTEXT)
-		await expect(bcrypt.verify(PLAINTEXT, password)).resolves.toBe(true)
-	})
-})
-
-/**
- * The one claim in this change that no mock can make: that MongoDB itself lets the same address be
- * deleted and re-inserted inside one transaction, past a unique index with no `partialFilterExpression`.
- * The unit suite proves the resolver calls the two in that order; only a real index proves the order is
- * enough.
- */
-describe('a closed account is destroyed and its address registered again', () => {
-	const OLD_PASSWORD = 'itest-closed-account-old'
-	const NEW_PASSWORD = 'itest-closed-account-new'
-
-	/** `login.email` is deterministically encrypted, so the ciphertext is the only handle onto a document. */
-	async function byEmail(email: string) {
-		return await db()
-			.collection('user')
-			.find({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER) })
-			.toArray()
-	}
-
-	// ⚠️ **Both writes are in one transaction, and the insert would be refused without the delete in front
-	// of it.** `login.email_unique` carries no `partialFilterExpression`, so the closed document holds the
-	// address until it is gone — which is the whole reason closing an account used to burn its address for
-	// the thirty days of the retention window.
-	it('replaces the document rather than reviving it, past the unique index', async () => {
-		const email = itestEmail()
-
-		await inTransaction((session) => registerNewUser(email, OLD_PASSWORD, session))
-
-		const [closed] = await byEmail(email)
-		registeredIds.push({ collection: 'user', _id: closed._id })
-
-		await db()
-			.collection('user')
-			.updateOne({ _id: closed._id }, { $set: { 'emailVerify.valid': true, deleted: new Date() } })
-
-		await inTransaction(async (session) => {
-			await purgeClosedUser(session, closed._id)
-			await registerNewUser(email, NEW_PASSWORD, session)
-		})
-
-		const after = await byEmail(email)
-		for (const doc of after) registeredIds.push({ collection: 'user', _id: doc._id })
-
-		expect(after).toHaveLength(1)
-		expect(after[0]._id.equals(closed._id)).toBe(false)
-		expect(after[0]).not.toHaveProperty('deleted')
-		expect(after[0].emailVerify.valid).toBe(false)
-		await expect(bcrypt.verify(NEW_PASSWORD, after[0].login.password as string)).resolves.toBe(true)
-	})
-
-	// ⚠️ **The `deleted` clause is part of the filter, and this is what proves it.** `userRegister` has
-	// already branched on it, so the clause can never fail there — it is there for the caller that does not
-	// exist yet. Against a real collection, a live document handed to this function survives.
-	it('leaves a live document standing, however it is called', async () => {
-		const email = itestEmail()
-
-		await inTransaction((session) => registerNewUser(email, OLD_PASSWORD, session))
-
-		const [live] = await byEmail(email)
-		registeredIds.push({ collection: 'user', _id: live._id })
-
-		await inTransaction((session) => purgeClosedUser(session, live._id))
-
-		await expect(db().collection('user').countDocuments({ _id: live._id })).resolves.toBe(1)
 	})
 })
 

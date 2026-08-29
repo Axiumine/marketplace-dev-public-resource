@@ -1,27 +1,21 @@
 import type { Context, Next } from 'koa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// routerVerifyEmail() is a factory called once, at module load, to build the handler mounted
-// on the verify-email route. Mocking it keeps the real implementation (which hits MongoDB
-// through userData4VerifyEmail) out of this unit test — only dispatch to the stub is asserted.
+// The two confirmation handlers are values, not factories: `createConfirmRegistrationRouter` is called at
+// module load inside `confirmRegistrationRouter.mts` and what this router mounts is the middleware itself.
+// Stubbing them keeps Redis, MongoDB and SocketLabs out of a routing test — only dispatch is asserted here;
+// what each handler does with the pair is `confirmRegistrationRouter.test.mts`.
 //
-// The mock target is the LOCAL module, not '@axiumine/koa-utils/koa/router/verifyEmail'. The package
-// export is the same handler pre-bound to koa-utils' own UserBase model — collection 'user', which
-// this platform does not have — so it is no longer what the router mounts; what binds the flow to
-// ShopOwner is pinned in verifyEmailFlow.test.mts.
-const verifyEmailHandler = vi.fn()
-const routerVerifyEmail = vi.fn(() => verifyEmailHandler)
+// ⚠️ The mock target is the LOCAL module, never `@axiumine/koa-utils/koa/router/verifyEmail`. That export
+// reads a half-built account out of the package's own `UserBase` model — collection `user`, which no
+// migration here creates — and after ADR-042 there is no half-built document to read in any collection.
+const routerConfirmShopOwnerRegistration = vi.fn()
+const routerConfirmUserRegistration = vi.fn()
 
-vi.mock('../src/lib/access/verifyEmailFlow.mts', () => ({ routerVerifyEmail }))
-
-// The customer tier gets its own flow, its own route and its own stub, for the same reason: the two
-// flows are bound to different models, so a shared handler would confirm a ShopOwner address against
-// the `user` collection. Only `routerVerifyEmailUser` is stubbed here — `setEmailHashUser` is exported
-// from the same module and used by the registration resolvers, so it has to stay on the mock's shape.
-const verifyEmailHandlerUser = vi.fn()
-const routerVerifyEmailUser = vi.fn(() => verifyEmailHandlerUser)
-
-vi.mock('../src/lib/access/verifyEmailFlowUser.mts', () => ({ routerVerifyEmailUser, setEmailHashUser: vi.fn() }))
+vi.mock('../src/lib/registration/confirmRegistrationRouter.mts', () => ({
+	routerConfirmShopOwnerRegistration,
+	routerConfirmUserRegistration
+}))
 
 const { default: router } = await import('../src/middleware/router/index.mts')
 
@@ -35,13 +29,11 @@ function makeCtx(method: string, path: string): Context {
 
 const noopNext: Next = async () => {}
 
-// The two handler stubs are module-level, so a call made by one dispatch test is still on the mock
-// when the next one runs — which is what makes "the other tier's handler was not reached" assertable.
-// The FACTORY mocks are deliberately left alone: they record a call made once at module load, before
-// any test body ran, and clearing them would erase the only evidence that the wiring happened.
+// The two stubs are module-level, so a call made by one dispatch test is still on the mock when the next
+// one runs — which is what makes "the other tier's handler was not reached" assertable.
 beforeEach(() => {
-	verifyEmailHandler.mockClear()
-	verifyEmailHandlerUser.mockClear()
+	routerConfirmShopOwnerRegistration.mockClear()
+	routerConfirmUserRegistration.mockClear()
 })
 
 describe('router', () => {
@@ -62,12 +54,16 @@ describe('router', () => {
 		expect(router.stack[2].methods).toContain('GET')
 	})
 
-	it('builds each verify-email handler once, at module load', () => {
-		expect(routerVerifyEmail).toHaveBeenCalledTimes(1)
-		expect(routerVerifyEmail).toHaveBeenCalledWith()
+	// ⚠️ The handlers are mounted as values. koa-utils' router exports were `() => handler` and were called
+	// at mount; mounting one of these the same way would hand `@koa/router` the result of calling the
+	// middleware with no context — `undefined` — and every confirmation link would 404 at run time while
+	// this suite went on passing.
+	it('mounts the middlewares themselves rather than calling them', () => {
+		expect(router.stack[1].stack).toContain(routerConfirmShopOwnerRegistration)
+		expect(router.stack[2].stack).toContain(routerConfirmUserRegistration)
 
-		expect(routerVerifyEmailUser).toHaveBeenCalledTimes(1)
-		expect(routerVerifyEmailUser).toHaveBeenCalledWith()
+		expect(routerConfirmShopOwnerRegistration).not.toHaveBeenCalled()
+		expect(routerConfirmUserRegistration).not.toHaveBeenCalled()
 	})
 })
 
@@ -87,8 +83,8 @@ describe('GET /check/verify-email/:email/:hash', () => {
 
 		await router.routes()(ctx, noopNext)
 
-		expect(verifyEmailHandler).toHaveBeenCalledTimes(1)
-		expect(verifyEmailHandler.mock.calls[0][0].params).toEqual({
+		expect(routerConfirmShopOwnerRegistration).toHaveBeenCalledTimes(1)
+		expect(routerConfirmShopOwnerRegistration.mock.calls[0][0].params).toEqual({
 			email: 'mark@test.it',
 			hash: 'abc123hash'
 		})
@@ -101,14 +97,14 @@ describe('GET /check/verify-email-user/:email/:hash', () => {
 
 		await router.routes()(ctx, noopNext)
 
-		expect(verifyEmailHandlerUser).toHaveBeenCalledTimes(1)
-		expect(verifyEmailHandlerUser.mock.calls[0][0].params).toEqual({
+		expect(routerConfirmUserRegistration).toHaveBeenCalledTimes(1)
+		expect(routerConfirmUserRegistration.mock.calls[0][0].params).toEqual({
 			email: 'anna@test.it',
 			hash: 'def456hash'
 		})
 
 		// The paths share a prefix, so this is the assertion that matters: `/verify-email-user/...` must
 		// not also match `/verify-email/:email/:hash` with `email` captured as the literal `-user`.
-		expect(verifyEmailHandler).not.toHaveBeenCalled()
+		expect(routerConfirmShopOwnerRegistration).not.toHaveBeenCalled()
 	})
 })

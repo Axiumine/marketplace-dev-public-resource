@@ -14,7 +14,7 @@ export const USER_VERIFY_LINK_PATH = '/check/verify-email-user'
  * Sends the customer's activation link.
  *
  * ⚠️ **`APP_DOMAIN_USER`, not `APP_DOMAIN`.** This one process serves two audiences: the shop owner's
- * link points at the operator-facing domain that `SocketLabsLib` reads from `APP_DOMAIN` at
+ * link points at the admin-facing domain that `SocketLabsLib` reads from `APP_DOMAIN` at
  * construction time, and the customer's must point at the storefront. koa-utils 5.8.0 added the
  * `linkBase` / `linkPath` parameters for exactly this — before it, one process could only ever send one
  * domain's links, and the choice was made when the object was built rather than when the mail was sent.

@@ -22,7 +22,7 @@ const encryptDocument = vi.fn(async (document: { login: { email: unknown } }) =>
 vi.mock('@axiumine/marketplace-common/encryption/encryptDocument', () => ({ encryptDocument }))
 
 // Both senders build a `SocketLabsLib` and reach the network. Only identity is asserted below, so a
-// sentinel is enough — and it is what makes "the customer's link is not sent on the operator domain"
+// sentinel is enough — and it is what makes "the customer's link is not sent on the admin domain"
 // assertable without sending anything.
 const sendUserVerifyEmail = vi.fn()
 const sendShopOwnerVerifyEmail = vi.fn()
@@ -64,7 +64,7 @@ describe('REGISTRATION_TARGET_USER', () => {
 	})
 
 	// ⚠️ `APP_DOMAIN_USER`, not `APP_DOMAIN`. One process serves two audiences and the two links differ
-	// in host as well as path; a customer who followed the operator's would land on a panel that cannot
+	// in host as well as path; a customer who followed the admin's would land on a panel that cannot
 	// complete the activation.
 	it('sends the link on the storefront sender', () => {
 		expect(REGISTRATION_TARGET_USER.sendVerifyEmail).toBe(sendUserVerifyEmail)
@@ -89,14 +89,14 @@ describe('REGISTRATION_TARGET_SHOP_OWNER', () => {
 	})
 
 	// ⚠️ **The one asymmetry between the two targets, and the reason the public seller form is safe to
-	// expose.** Selling is a commercial relationship with the operator, so a stranger may ask to become
+	// expose.** Selling is a commercial relationship with the admin, so a stranger may ask to become
 	// a shop owner but may not become one by filling in a form: `checkShopOwnerApproval` refuses a
 	// session at login and at every refresh while this flag is up.
 	it('parks the account behind the approval queue', () => {
 		expect(REGISTRATION_TARGET_SHOP_OWNER.waitApprov).toBe(true)
 	})
 
-	it('sends the link on the operator sender', () => {
+	it('sends the link on the admin sender', () => {
 		expect(REGISTRATION_TARGET_SHOP_OWNER.sendVerifyEmail).toBe(sendShopOwnerVerifyEmail)
 	})
 

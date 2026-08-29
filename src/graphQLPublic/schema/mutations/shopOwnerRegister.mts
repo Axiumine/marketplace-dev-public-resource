@@ -23,12 +23,12 @@ export interface IShopOwnerRegisterArgs {
  * ⚠️ **The account this leads to cannot be used.** The confirmation writes `waitApprov: true`, and
  * `checkShopOwnerApproval` refuses a session at login and at every refresh while the flag is up. That is
  * the whole reason this mutation is safe to expose: selling on the platform is a commercial relationship
- * with the operator, so a stranger may *ask* to become a shop owner but may not *become* one by filling
- * in a form. Confirming the address proves the person exists; an operator clearing the flag through
+ * with the admin, so a stranger may *ask* to become a shop owner but may not *become* one by filling
+ * in a form. Confirming the address proves the person exists; an admin clearing the flag through
  * `shopOwnerUpdateStatus` is what admits them.
  *
  * ⚠️ **`shopOwnerAdd` on the Admin service writes no `waitApprov`, deliberately.** The asymmetry is the
- * decision: an operator creating an account by hand has approved it by the act of creating it, and
+ * decision: an admin creating an account by hand has approved it by the act of creating it, and
  * routing those through the same queue would leave it permanently full of accounts nobody is waiting on.
  *
  * ⚠️ **Nothing is written to MongoDB here** (ADR-042). A submitted registration is a Redis record with a
@@ -55,7 +55,7 @@ export interface IShopOwnerRegisterArgs {
  * to offer one from until it is approved.
  */
 export const shopOwnerRegister = {
-	description: 'Register a new shop owner, pending operator approval, and send the activation link',
+	description: 'Register a new shop owner, pending admin approval, and send the activation link',
 	type: new GraphQLNonNull(GraphQLBoolean),
 	args: {
 		email: { type: new GraphQLNonNull(GraphQLString) },

@@ -56,7 +56,7 @@ const DEFAULT_SITEMAP_LIMIT = 1_000
  * loosened, this is one of the places that assumes it was not.
  *
  * trusted(): `sanitizeFilter` is on globally, so every `$exists`, `$gt` and `$in` below would
- * otherwise be cast as a literal value instead of read as an operator — a filter matching nothing,
+ * otherwise be cast as a literal value instead of read as an admin — a filter matching nothing,
  * which in a sitemap reads as "the site has no pages".
  */
 export const sitemapEntries = {

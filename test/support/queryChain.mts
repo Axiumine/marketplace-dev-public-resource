@@ -51,7 +51,7 @@ export const live = { published: true, deleted: trusted({ $exists: false }) }
  * ⚠️ The operator *and* its boolean, not merely the key. `$exists: true` inverts the filter into
  * "tombstones only" — a sitemap made entirely of deleted categories — and `{}` drops it altogether,
  * and neither shows up in the key set. The `trusted` tag is the third assertion for the same reason:
- * `sanitizeFilter` is on globally, and an untagged operator object is stripped before it reaches the
+ * `sanitizeFilter` is on globally, and an untagged admin object is stripped before it reaches the
  * server.
  */
 export const expectTombstoneFilter = (filter: Record<string, Record<string | symbol, unknown>>): void => {

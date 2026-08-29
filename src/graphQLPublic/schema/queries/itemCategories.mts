@@ -18,7 +18,7 @@ import { trusted } from 'mongoose'
  * validator because a parent's own `idParent` is in another document and a `$jsonSchema` sees one.
  *
  * `deleted` is filtered; `published` is not, because categories have no such flag. A category is not
- * a draft — it exists platform-wide the moment an operator creates it. Soft-deleted documents stay
+ * a draft — it exists platform-wide the moment an admin creates it. Soft-deleted documents stay
  * in the collection because `item.idCategory` is required, so a hard delete would leave items
  * pointing at nothing.
  *
@@ -30,7 +30,7 @@ import { trusted } from 'mongoose'
  * save a sort of a page that nginx caches anyway.
  *
  * trusted(): `sanitizeFilter` is on globally, so a bare `{ $exists: false }` would be cast as a
- * literal against the `deleted` path instead of read as an operator, and the query would silently
+ * literal against the `deleted` path instead of read as an admin, and the query would silently
  * match nothing.
  */
 export const itemCategories = {

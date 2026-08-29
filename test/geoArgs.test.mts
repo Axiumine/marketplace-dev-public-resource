@@ -99,7 +99,7 @@ describe('centerSphereFilter', () => {
 describe('bboxToPolygon', () => {
 	const bbox = { minLng: 9, minLat: 45, maxLng: 10, maxLat: 46 }
 
-	// ⚠️ A GeoJSON `Polygon` rather than the shorter `$box`, which is a legacy 2d operator: accepted
+	// ⚠️ A GeoJSON `Polygon` rather than the shorter `$box`, which is a legacy 2d admin: accepted
 	// against a 2dsphere index but interpreted with planar geometry, so its edges disagree with the
 	// index's spherical ones by kilometres at mid latitudes.
 	//

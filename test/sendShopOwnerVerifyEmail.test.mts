@@ -9,7 +9,7 @@ const SocketLabsLib = vi.fn(function mockSocketLabsLib() {
 
 vi.mock('@axiumine/koa-utils/email/SocketLabsLib', () => ({ SocketLabsLib }))
 
-const APP_DOMAIN = 'https://operator.test'
+const APP_DOMAIN = 'https://admin.test'
 
 const { sendShopOwnerVerifyEmail, SHOP_OWNER_VERIFY_LINK_PATH } = await import('../src/lib/access/sendShopOwnerVerifyEmail.mts')
 
@@ -35,11 +35,11 @@ describe('sendShopOwnerVerifyEmail', () => {
 		expect(SHOP_OWNER_VERIFY_LINK_PATH).not.toBe('/check/verify-email-user')
 	})
 
-	// ⚠️ **`APP_DOMAIN`, the operator-facing domain, passed explicitly.** It is what `SocketLabsLib` would
+	// ⚠️ **`APP_DOMAIN`, the admin-facing domain, passed explicitly.** It is what `SocketLabsLib` would
 	// have defaulted to, so the mail is the same either way today; spelling it out is what makes the
 	// difference from `sendUserVerifyEmail` — which must override both — a decision a reader can see
 	// rather than a parameter nobody noticed.
-	it('sends the operator domain and the seller path', async () => {
+	it('sends the admin domain and the seller path', async () => {
 		await sendShopOwnerVerifyEmail('seller@marketplace.test', 'a1b2c3')
 
 		expect(sendEmailVerify).toHaveBeenCalledExactlyOnceWith(

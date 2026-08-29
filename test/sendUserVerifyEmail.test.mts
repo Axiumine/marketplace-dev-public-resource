@@ -28,7 +28,7 @@ describe('sendUserVerifyEmail', () => {
 	})
 
 	// ⚠️ **`APP_DOMAIN_USER`, not `APP_DOMAIN`.** One process sends two audiences' links: the shop
-	// owner's goes to the operator-facing domain `SocketLabsLib` reads at construction, the customer's
+	// owner's goes to the admin-facing domain `SocketLabsLib` reads at construction, the customer's
 	// must go to the storefront. Passing the base per-call is the only reason both can leave this service.
 	it('sends the storefront domain and the customer path, not the constructor’s defaults', async () => {
 		await sendUserVerifyEmail('customer@marketplace.test', 'a1b2c3')

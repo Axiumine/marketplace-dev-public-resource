@@ -48,7 +48,7 @@ interface IAccountLiveness {
  * unauthenticated mutation, with a caller-supplied password, without restoring `waitApprov`. ADR-042 fixes
  * it by deletion. A document that predates that change and is still sitting unverified reads as live here
  * and gets the already-registered mail; there are none outside development, and the recovery is the same
- * one it always was — the operator.
+ * one it always was — the admin.
  */
 export const createSubmitRegistration = (target: IRegistrationTarget) =>
 	async function submitRegistration(uEmail: string, password: string): Promise<void> {

@@ -64,7 +64,7 @@ function accountDocument(target: IRegistrationTarget, record: IPendingRegistrati
  * ⚠️ **`waitApprov` goes back up on the seller tier, by the platform owner's ruling of 2026-08-29** — *"the
  * state of waitApprove is true, so admin can not approve the user if it is a problem"*. A closure is the
  * platform's last look at an account, so coming back is re-entry through the same door a first registration
- * uses, and an operator who closed a seller for cause simply never approves the account again. It is also
+ * uses, and an admin who closed a seller for cause simply never approves the account again. It is also
  * the only human checkpoint on the recycled-mailbox risk this flow carries; the customer tier has no
  * equivalent because it has no approval gate at all.
  *

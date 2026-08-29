@@ -20,7 +20,7 @@ sessions, and this service only serves what needs no session at all.
 | Mutations | |
 |---|---|
 | `resetPwd`, `updatePwd` | the seller reset flow's two halves |
-| `shopOwnerRegister` | seller self-service registration — parked on `waitApprov` until an operator clears it |
+| `shopOwnerRegister` | seller self-service registration — parked on `waitApprov` until an admin clears it |
 | `userRegister` | end-customer self-service registration — no approval step, unlike `ShopOwner` |
 | `userVerifyEmailResend` | re-sends the confirmation mail |
 | `userResetPwd`, `userUpdatePwd` | the customer reset flow's two halves |

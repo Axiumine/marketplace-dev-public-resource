@@ -2,12 +2,12 @@
  * Validation and translation for the two geographic shapes the map speaks: a viewport rectangle and
  * a point with a radius.
  *
- * Both end up as a MongoDB geo operator over `company.address.position`, which
+ * Both end up as a MongoDB geo admin over `company.address.position`, which
  * `20260804010000-alter-company-public` indexed `2dsphere`. Nothing here builds a filter that is not
  * backed by that index.
  *
  * ⚠️ **Longitude first, everywhere.** GeoJSON orders a coordinate pair `[longitude, latitude]`, and
- * so does every operator below. The migration that added the index says why this matters more than
+ * so does every admin below. The migration that added the index says why this matters more than
  * it looks: a `2dsphere` index over `[lat, lng]` data builds without complaint and answers every
  * query with the wrong shops. There is no error to catch — only wrong answers — so the order is
  * asserted at the schema boundary here and never re-derived downstream.
@@ -102,7 +102,7 @@ export function centerSphereFilter(near: INearPoint) {
 /**
  * Validate a viewport rectangle and turn it into a GeoJSON `Polygon`.
  *
- * A polygon rather than the shorter `$box`, because `$box` is a legacy 2d operator: it is *accepted*
+ * A polygon rather than the shorter `$box`, because `$box` is a legacy 2d admin: it is *accepted*
  * against a `2dsphere` index but interpreted with planar geometry, so its edges are straight lines
  * on an equirectangular projection rather than on the sphere the index actually models. The two
  * disagree by kilometres at mid latitudes — a shop just inside the drawn rectangle can fall

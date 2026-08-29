@@ -56,7 +56,7 @@ describe('resetPwdFlowUser', () => {
 	})
 
 	// ⚠️ The mailer is the whole reason this module is not one line. koa-utils' `sendEmailReset`
-	// builds its link on `APP_DOMAIN` — the operator/shop-owner origin — and a customer who followed
+	// builds its link on `APP_DOMAIN` — the admin/shop-owner origin — and a customer who followed
 	// that link would land on a panel that cannot complete the reset. The resolver cannot make the
 	// choice itself: by the time it holds an email and a hash, two collections behind this one process
 	// look identical.

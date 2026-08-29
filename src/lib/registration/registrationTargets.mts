@@ -76,10 +76,10 @@ export interface IRegistrationTarget {
 	/** `Model<any>` — koa-utils' own type for a model an access flow is pointed at. */
 	model: TAccessModel
 	/**
-	 * Whether a confirmed account starts parked behind the operator's approval queue.
+	 * Whether a confirmed account starts parked behind the admin's approval queue.
 	 *
 	 * ⚠️ **`true` on `shopOwner`, and it is written at confirm rather than at submit** — which is the point
-	 * of moving it here. Selling on the platform is a commercial relationship with the operator, so a
+	 * of moving it here. Selling on the platform is a commercial relationship with the admin, so a
 	 * stranger may ask to become a shop owner but may not become one by filling in a form; before ADR-042
 	 * the flag lived on a document a public mutation could reach, and the shop owner's restart path
 	 * left it cleared on a revived account. The only writer is now the one place that creates the document.

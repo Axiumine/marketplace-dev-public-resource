@@ -1,60 +1,23 @@
 // noinspection DuplicatedCode -- what this shares with userMutations.test.mts is the mock declarations: the
-// imports, the `vi.fn()` handles, the `vi.hoisted` session block and the `vi.mock` factories that close over
-// them. None of it can move. `vi.mock` and `vi.hoisted` are hoisted to the top of the file that declares
-// them, so a handle imported from a shared module is not yet bound when its own factory runs — the mock
-// would install `undefined`. The tests underneath, which is what the two suites actually assert, differ:
-// one registers a shop owner, the other a user, against different collections and different mail flows.
+// imports, the `vi.fn()` handles and the `vi.mock` factories that close over them. None of it can move.
+// `vi.mock` is hoisted to the top of the file that declares it, so a handle imported from a shared module is
+// not yet bound when its own factory runs — the mock would install `undefined`. The tests underneath, which
+// is what the two suites actually assert, differ: one registers a shop owner, the other a customer, against
+// different collections and different mail flows.
 
 import { GraphQLBoolean, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const guardPublicWrite = vi.fn()
-const sendShopOwnerVerifyEmail = vi.fn()
-const setEmailHash = vi.fn(async () => 'hash-reissued')
-const registerNewShopOwner = vi.fn(async () => 'hash-fresh')
-const restartShopOwnerRegistration = vi.fn()
-const shopOwnerForRegistration = vi.fn()
-const emailAlreadyValid = vi.fn()
+const submitShopOwnerRegistration = vi.fn()
 const checkEmailLen = vi.fn()
 const checkPwdLen = vi.fn()
 
-// `vi.hoisted`, unlike the plain consts above, because this file imports `mongoose` itself: the mock
-// factory runs while that import is evaluated, which is before any top-level `const` in the file has
-// been initialised. The other factories are only reached by the dynamic import in `beforeEach`.
-const { endSession, session, startSession, withTransaction } = vi.hoisted(() => {
-	const endSessionFn = vi.fn()
-	const withTransactionFn = vi.fn(async (work: () => Promise<void>) => await work())
-	const sessionObj = { withTransaction: withTransactionFn, endSession: endSessionFn }
-
-	return {
-		endSession: endSessionFn,
-		session: sessionObj,
-		startSession: vi.fn(async () => sessionObj),
-		withTransaction: withTransactionFn
-	}
-})
-
-vi.mock('mongoose', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('mongoose')>()
-
-	return { ...actual, default: { ...actual.default, startSession } }
-})
-
 vi.mock('@axiumine/koa-utils/lib/checkEmailLen', () => ({ checkEmailLen }))
 vi.mock('@axiumine/koa-utils/lib/checkPwdLen', () => ({ checkPwdLen }))
-vi.mock('@axiumine/koa-utils/email/SocketLabsLib', () => ({
-	SocketLabsLib: vi.fn(function mockSocketLabsLib() {
-		return { emailAlreadyValid }
-	})
-}))
 
 vi.mock('../src/lib/access/guardPublicWrite.mts', () => ({ guardPublicWrite }))
-vi.mock('../src/lib/access/sendShopOwnerVerifyEmail.mts', () => ({ sendShopOwnerVerifyEmail }))
-vi.mock('../src/lib/access/verifyEmailFlow.mts', () => ({ setEmailHash }))
-vi.mock('../src/lib/db/registerNewShopOwner.mts', () => ({ registerNewShopOwner }))
-vi.mock('../src/lib/db/restartShopOwnerRegistration.mts', () => ({ restartShopOwnerRegistration }))
-vi.mock('../src/lib/db/shopOwnerForRegistration.mts', () => ({ shopOwnerForRegistration }))
+vi.mock('../src/lib/registration/submitRegistration.mts', () => ({ submitShopOwnerRegistration }))
 
 // Imported inside `beforeEach` rather than at the top, the way every mutation suite in this repo is:
 // the field objects are built at module load, so a top-level `await import()` evaluates them during
@@ -62,19 +25,19 @@ vi.mock('../src/lib/db/shopOwnerForRegistration.mts', () => ({ shopOwnerForRegis
 // reported as Survived.
 let shopOwnerRegister: (typeof import('../src/graphQLPublic/schema/mutations/shopOwnerRegister.mts'))['shopOwnerRegister']
 
-const shopOwnerId = new Types.ObjectId('507f1f77bcf86cd799439012')
-
 /** Mixed case and trailing space, because normalisation is asserted on nearly every path below. */
 const TYPED_EMAIL = ' Seller@Marketplace.TEST '
 const EMAIL = 'seller@marketplace.test'
 
-const registerArgs = { email: TYPED_EMAIL, password: 'sup3r-secret', repeatPassword: 'sup3r-secret', turnstileToken: 'cf-token' }
+const registerArgs = {
+	email: TYPED_EMAIL,
+	password: 'sup3r-secret',
+	repeatPassword: 'sup3r-secret',
+	turnstileToken: 'cf-token'
+}
 
 beforeEach(async () => {
 	vi.clearAllMocks()
-	setEmailHash.mockResolvedValue('hash-reissued')
-	registerNewShopOwner.mockResolvedValue('hash-fresh')
-	shopOwnerForRegistration.mockResolvedValue(null)
 	;({ shopOwnerRegister } = await import('../src/graphQLPublic/schema/mutations/shopOwnerRegister.mts'))
 })
 
@@ -128,12 +91,12 @@ describe('shopOwnerRegister — validation, before anything is spent', () => {
 		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('email too long')
 
 		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(startSession).not.toHaveBeenCalled()
+		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
 	})
 
 	// ⚠️ **`repeatPassword` is a control here and a courtesy in the form.** The frontend check exists to
 	// tell the typist before they submit; nothing stops a client from not being that frontend.
-	it('refuses two different passwords, before the guard and before the transaction', async () => {
+	it('refuses two different passwords, before the guard and before the submission', async () => {
 		// koa-utils puts the readable half in `extensions.description` and keeps `message` at the status
 		// title, so asserting on `message` alone would pass for every 400 this mutation can raise.
 		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' })).rejects.toMatchObject({
@@ -142,7 +105,7 @@ describe('shopOwnerRegister — validation, before anything is spent', () => {
 		})
 
 		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(startSession).not.toHaveBeenCalled()
+		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
 	})
 
 	it('compares the passwords byte for byte, not case-insensitively', async () => {
@@ -176,115 +139,67 @@ describe('shopOwnerRegister — the guard', () => {
 		expect(guardPublicWrite.mock.calls[0][0].email).toBe(EMAIL)
 	})
 
-	it('never opens a transaction once the guard has refused', async () => {
+	// ⚠️ The guard runs before the submission, so a refused caller costs one Redis counter and nothing
+	// else: no bcrypt round, no pending record, and above all no mail. A guard that ran afterwards would
+	// meter the answer while the mail had already gone out.
+	it('submits nothing once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
 		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('Too many requests')
 
-		expect(startSession).not.toHaveBeenCalled()
-		expect(shopOwnerForRegistration).not.toHaveBeenCalled()
+		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+	})
+
+	it('guards before it submits', async () => {
+		await shopOwnerRegister.resolve(null, registerArgs)
+
+		expect(guardPublicWrite.mock.invocationCallOrder[0]).toBeLessThan(submitShopOwnerRegistration.mock.invocationCallOrder[0])
 	})
 })
 
-describe('shopOwnerRegister — the three outcomes', () => {
-	// ⚠️ **All three answer `true`, and that is the security property rather than laziness.** A mutation
-	// that throws 409 for a taken address is an account-enumeration oracle: anyone can ask it, one address
-	// at a time, who sells here. The outcomes are distinguishable only in the inbox.
-	it('writes the document and sends the link when the address is free', async () => {
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(shopOwnerForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
-		expect(registerNewShopOwner).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret', session)
-		expect(sendShopOwnerVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-fresh')
-		expect(restartShopOwnerRegistration).not.toHaveBeenCalled()
-		expect(emailAlreadyValid).not.toHaveBeenCalled()
-	})
-
-	// ⚠️ A verified document is somebody's account — approved or still queued, and this mutation cannot
-	// tell, because the lookup does not project the flag. Nothing is written to it, not the password and
-	// not the hash. The "you already have an account" mail is the one message that helps its owner without
-	// telling anybody else the address is taken.
-	it('writes nothing at all to a verified account, and says so only in the inbox', async () => {
-		shopOwnerForRegistration.mockResolvedValueOnce({ _id: shopOwnerId, emailVerify: { valid: true } })
-
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(emailAlreadyValid).toHaveBeenCalledExactlyOnceWith(EMAIL)
-		expect(registerNewShopOwner).not.toHaveBeenCalled()
-		expect(restartShopOwnerRegistration).not.toHaveBeenCalled()
-		expect(setEmailHash).not.toHaveBeenCalled()
-		expect(sendShopOwnerVerifyEmail).not.toHaveBeenCalled()
-	})
-
-	// An unfinished attempt — possibly with a mistyped password, possibly tombstoned by the three-day
-	// guard. Restarting it is what keeps the address usable by the person who chose it; the unique index
-	// on `login.email` means the alternative is that they can never register it at all.
-	it('restarts an unverified attempt with the new password and a new hash', async () => {
-		shopOwnerForRegistration.mockResolvedValueOnce({ _id: shopOwnerId, emailVerify: { valid: false } })
-
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(restartShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(session, shopOwnerId, 'sup3r-secret')
-		expect(setEmailHash).toHaveBeenCalledExactlyOnceWith(session, shopOwnerId)
-		expect(sendShopOwnerVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
-		expect(registerNewShopOwner).not.toHaveBeenCalled()
-	})
-
-	// The optional chain matters: `emailVerify` is absent on a document whose registration was interrupted
-	// between the insert and the flow — and on every shop owner an operator created by hand through
-	// `shopOwnerAdd`, which writes no such block at all. Reading that as "verified" would lock the address
-	// forever; reading it as "unfinished" is what this branch does, and the restart it triggers can only
-	// ever reach a document nobody has proved they own.
-	it.each([
-		['no emailVerify subdocument at all', { _id: shopOwnerId }],
-		['an emailVerify with no valid flag', { _id: shopOwnerId, emailVerify: {} }],
-		['a tombstoned unverified document', { _id: shopOwnerId, emailVerify: { valid: false }, deleted: new Date() }]
-	])('treats %s as an unfinished attempt', async (_desc, existing) => {
-		shopOwnerForRegistration.mockResolvedValueOnce(existing)
-
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(restartShopOwnerRegistration).toHaveBeenCalledOnce()
-		expect(emailAlreadyValid).not.toHaveBeenCalled()
-	})
-
-	// The restart is ordered: password first, then the hash, then the mail. A mail sent before the
-	// document was rewritten would carry a link that activates the *old* password.
-	it('rewrites the document before it mints the hash, and mints before it sends', async () => {
-		shopOwnerForRegistration.mockResolvedValueOnce({ _id: shopOwnerId, emailVerify: { valid: false } })
-
+describe('shopOwnerRegister — what it hands the flow', () => {
+	// ⚠️ **Nothing is written to MongoDB by this resolver** (ADR-042). A submitted registration is a Redis
+	// record with a three-day TTL and the `shopOwner` document is created by the confirmation click and by
+	// nothing else — so this resolver is the normalisation, the two length checks, the guard and a call.
+	// What the call then does about a free, a live or a closed address is `submitRegistration.test.mts`.
+	it('submits the canonical address and the password as typed', async () => {
 		await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(restartShopOwnerRegistration.mock.invocationCallOrder[0]).toBeLessThan(setEmailHash.mock.invocationCallOrder[0])
-		expect(setEmailHash.mock.invocationCallOrder[0]).toBeLessThan(sendShopOwnerVerifyEmail.mock.invocationCallOrder[0])
-	})
-})
-
-describe('shopOwnerRegister — the transaction', () => {
-	// One transaction so a mail is never sent for a document that failed to write. The reverse — document
-	// written, SocketLabs then refuses — stays possible by design, and submitting the form again is the
-	// recovery: it lands on the restart branch and re-mints the hash.
-	it('does all of its work inside one transaction, and always ends the session', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
-
-		expect(startSession).toHaveBeenCalledOnce()
-		expect(withTransaction).toHaveBeenCalledOnce()
-		expect(endSession).toHaveBeenCalledOnce()
+		expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret')
 	})
 
-	it('ends the session even when the transaction throws', async () => {
-		registerNewShopOwner.mockRejectedValueOnce(new Error('write conflict'))
+	// ⚠️ **The seller flow, never the customer one.** Both take an address and a password and neither can
+	// tell them apart; the wrong binding here would open a `user` account for somebody who asked to sell,
+	// and would skip the approval queue that makes this mutation safe to expose in the first place.
+	it('submits through the seller binding', async () => {
+		const module = await import('../src/lib/registration/submitRegistration.mts')
 
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow()
+		expect(submitShopOwnerRegistration).toBe(module.submitShopOwnerRegistration)
+	})
 
-		expect(endSession).toHaveBeenCalledOnce()
+	// ⚠️ **Every outcome answers `true`, and that is the security property rather than laziness.** A
+	// mutation that throws 409 for a taken address is an account-enumeration oracle: anybody can ask it,
+	// one address at a time, who sells here. The outcomes are distinguishable only in the inbox — and the
+	// approval state is never part of the answer either.
+	it('answers true whatever the flow found', async () => {
+		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
 	})
 
 	// `tryCatchRethrow` is what turns an unexpected driver error into a GraphQL error without leaking the
 	// driver's message; a failure has to keep failing, not be swallowed into a `true`.
-	it('rethrows rather than answering true on a failed write', async () => {
-		registerNewShopOwner.mockRejectedValueOnce(new Error('write conflict'))
+	it('rethrows rather than answering true when the flow fails', async () => {
+		submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
 
 		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow()
+	})
+
+	// The rethrow is a GraphQL error, not the driver's: a caller must not learn the host and port of the
+	// Redis node from a failed registration.
+	it('does not leak the driver’s message to the caller', async () => {
+		submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
+
+		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toMatchObject({
+			message: 'Internal Server Error'
+		})
 	})
 })

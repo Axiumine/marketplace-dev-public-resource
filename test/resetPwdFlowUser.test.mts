@@ -1,22 +1,16 @@
 import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { expectFlowArguments, expectFreshDateFactory, expectSoftDeleteOnAbandon } from './support/verifyEmailFlowContract.mts'
-
-// Sentinels: both factories are koa-utils' and are tested there. What this file pins is what WE hand
-// them — which model, which paths, which disposal policy, which mail domain — and that what comes
-// back reaches the schema under the right names.
-const boundRouterVerifyEmail = { __sentinel: 'routerVerifyEmailUser' }
-const boundSetEmailHash = { __sentinel: 'setEmailHashUser' }
+// Sentinels: the factory is koa-utils' and is tested there. What this file pins is what WE hand it —
+// which model, which paths, which mail domain — and that what comes back reaches the schema under the
+// right names.
 const boundResetPwd = { __sentinel: 'userResetPwd' }
 const boundUpdatePassword = { __sentinel: 'userUpdatePwd' }
 const boundMailer = { __sentinel: 'resetPwdMailer' }
 
-const createVerifyEmailFlow = vi.fn(() => ({ routerVerifyEmail: boundRouterVerifyEmail, setEmailHash: boundSetEmailHash }))
 const createResetPwdFlow = vi.fn(() => ({ resetPwd: boundResetPwd, updatePassword: boundUpdatePassword }))
 const createResetPwdMailer = vi.fn(() => boundMailer)
 
-vi.mock('@axiumine/koa-utils/lib/access/createVerifyEmailFlow', () => ({ createVerifyEmailFlow }))
 vi.mock('@axiumine/koa-utils/lib/access/createResetPwdFlow', () => ({ createResetPwdFlow }))
 vi.mock('@axiumine/koa-utils/lib/access/resetPwdMailer', () => ({ createResetPwdMailer }))
 
@@ -26,35 +20,17 @@ vi.mock('@axiumine/koa-utils/lib/access/resetPwdMailer', () => ({ createResetPwd
 const APP_DOMAIN_USER = 'https://storefront.test'
 process.env.APP_DOMAIN_USER = APP_DOMAIN_USER
 
-// Imported inside beforeAll for the reason the two ShopOwner flow suites give: the path maps are
-// module-load-time object literals, so a mutant wiping one to `{}` does its damage during Vitest's
+// Imported inside beforeAll for the reason the ShopOwner reset suite gives: the path map is a
+// module-load-time object literal, so a mutant wiping it to `{}` does its damage during Vitest's
 // file-collection phase, which Stryker's perTest coverage cannot attribute to any test — it is then
 // reported Survived while the assertions below plainly fail against it.
-let VERIFY_EMAIL_PATHS_USER: (typeof import('../src/lib/access/verifyEmailFlowUser.mts'))['VERIFY_EMAIL_PATHS_USER']
-let routerVerifyEmailUser: (typeof import('../src/lib/access/verifyEmailFlowUser.mts'))['routerVerifyEmailUser']
-let setEmailHashUser: (typeof import('../src/lib/access/verifyEmailFlowUser.mts'))['setEmailHashUser']
 let RESET_PWD_PATHS_USER: (typeof import('../src/lib/access/resetPwdFlowUser.mts'))['RESET_PWD_PATHS_USER']
 let userResetPwd: (typeof import('../src/lib/access/resetPwdFlowUser.mts'))['userResetPwd']
 let userUpdatePwd: (typeof import('../src/lib/access/resetPwdFlowUser.mts'))['userUpdatePwd']
 
 beforeAll(async () => {
-	;({ VERIFY_EMAIL_PATHS_USER, routerVerifyEmailUser, setEmailHashUser } =
-		await import('../src/lib/access/verifyEmailFlowUser.mts'))
 	;({ RESET_PWD_PATHS_USER, userResetPwd, userUpdatePwd } = await import('../src/lib/access/resetPwdFlowUser.mts'))
 })
-
-const EXPECTED_VERIFY = {
-	email: 'login.email',
-	valid: 'emailVerify.valid',
-	hash: 'emailVerify.hash',
-	dateLastReq: 'emailVerify.dateLastReq',
-	requestTimes: 'emailVerify.requestTimes',
-	newEmailTmp: 'emailVerify.newEmailTmp',
-	deleted: 'deleted',
-	disabled: 'disabled',
-	verifyClear: ['emailVerify.hash', 'emailVerify.dateLastReq', 'emailVerify.requestTimes'],
-	emailChangeClear: ['emailVerify.hash', 'emailVerify.dateLastReq', 'emailVerify.requestTimes', 'emailVerify.newEmailTmp']
-}
 
 const EXPECTED_RESET = {
 	email: 'login.email',
@@ -66,109 +42,6 @@ const EXPECTED_RESET = {
 	disabled: 'disabled',
 	resetClear: ['resetPwd']
 }
-
-describe('verifyEmailFlowUser', () => {
-	// ⚠️ The whole reason this module exists next to `verifyEmailFlow.mts` rather than being merged
-	// with it: the two flows are bound to two collections. A shared binding would confirm a customer's
-	// link against `shopOwner` and report every valid hash as a bad one.
-	it('builds the flow exactly once, against the User model', () => {
-		expect(createVerifyEmailFlow).toHaveBeenCalledTimes(1)
-		expect(createVerifyEmailFlow.mock.calls[0][0].model).toBe(User)
-		expect(User.collection.name).toBe('user')
-	})
-
-	// The shared argument contract — see `support/verifyEmailFlowContract.mts`.
-	it('passes exactly model, paths, onAbandon and deletedValue', () => {
-		expectFlowArguments(createVerifyEmailFlow.mock.calls[0][0])
-	})
-
-	// ⚠️ Soft-delete, arrived at from the other direction than the shop owner's: `login.email` carries
-	// a unique index with no `partialFilterExpression`, so a hard delete on an abandoned registration
-	// frees that address for anyone to claim — including whoever was mistyping it into the form. The
-	// tombstone keeps the address bound to the person who first proved they could receive mail there.
-	it('soft-deletes an abandoned registration instead of dropping the document', () => {
-		expectSoftDeleteOnAbandon(createVerifyEmailFlow.mock.calls[0][0])
-	})
-
-	// koa-utils defaults `deletedValue` to boolean `true`, which `user.deleted` rejects twice over —
-	// `bsonType: 'date'` in the validator and `Date` on the model. The schema half is asserted here
-	// rather than in the shared helper: the helper holds no model, and this is the customer's.
-	it('tombstones with a fresh Date, which is what the user schema declares', () => {
-		expectFreshDateFactory(createVerifyEmailFlow.mock.calls[0][0].deletedValue)
-		expect(User.schema.path('deleted').instance).toBe('Date')
-	})
-
-	// Whole-object assertion plus an explicit key count: a per-key check cannot fail against `{}`
-	// (no `expect` inside a missing key ever runs), and the count catches a mutant swapping in a
-	// different 10-key object.
-	it('passes the customer path map, and nothing but it', () => {
-		expect(Object.keys(VERIFY_EMAIL_PATHS_USER)).toHaveLength(10)
-		expect(VERIFY_EMAIL_PATHS_USER).toEqual(EXPECTED_VERIFY)
-		expect(createVerifyEmailFlow.mock.calls[0][0].paths).toEqual(EXPECTED_VERIFY)
-	})
-
-	// An unset key falls back to koa-utils' `UserBase` layout — `account.email.*` on collection
-	// `user`, which on this platform *does* exist now and holds the customer, so the fallback would no
-	// longer even miss loudly. It would read `undefined` for every account and silently never fire.
-	it('points the account-state gate at the root flags, not the UserBase account subtree', () => {
-		expect(VERIFY_EMAIL_PATHS_USER.deleted).toBe('deleted')
-		expect(VERIFY_EMAIL_PATHS_USER.disabled).toBe('disabled')
-		expect(VERIFY_EMAIL_PATHS_USER.deleted).not.toMatch(/^account\./)
-		expect(VERIFY_EMAIL_PATHS_USER.disabled).not.toMatch(/^account\./)
-	})
-
-	// The leaf paths, never the container: `emailVerify` declares no `required` array precisely so
-	// these three can go while `valid: true` — the one thing the verification produced — stays.
-	it('clears the three token members and never the emailVerify container', () => {
-		expect(VERIFY_EMAIL_PATHS_USER.verifyClear).toEqual([
-			VERIFY_EMAIL_PATHS_USER.hash,
-			VERIFY_EMAIL_PATHS_USER.dateLastReq,
-			VERIFY_EMAIL_PATHS_USER.requestTimes
-		])
-		expect(VERIFY_EMAIL_PATHS_USER.verifyClear).not.toContain('emailVerify')
-		expect(VERIFY_EMAIL_PATHS_USER.verifyClear).not.toContain(VERIFY_EMAIL_PATHS_USER.valid)
-	})
-
-	it('clears the pending address too when a change is confirmed', () => {
-		expect(VERIFY_EMAIL_PATHS_USER.emailChangeClear).toEqual([
-			...VERIFY_EMAIL_PATHS_USER.verifyClear,
-			VERIFY_EMAIL_PATHS_USER.newEmailTmp
-		])
-	})
-
-	// A wrong path is a runtime no-op rather than a type error — `findOne` matches nothing and `$set`
-	// writes a field the strict validator rejects. The table is built FROM the map, so a rename in
-	// marketplace-common fails here instead of in production.
-	//
-	// A plain loop, not `it.each`: `it.each` builds its table while `describe` registers, which runs
-	// during collection — before `beforeAll` has populated the map.
-	it('resolves every path, including both clear lists, on the real User schema', () => {
-		const table: Array<[string, string]> = [
-			['email', VERIFY_EMAIL_PATHS_USER.email],
-			['valid', VERIFY_EMAIL_PATHS_USER.valid],
-			['hash', VERIFY_EMAIL_PATHS_USER.hash],
-			['dateLastReq', VERIFY_EMAIL_PATHS_USER.dateLastReq],
-			['requestTimes', VERIFY_EMAIL_PATHS_USER.requestTimes],
-			['newEmailTmp', VERIFY_EMAIL_PATHS_USER.newEmailTmp],
-			['deleted', VERIFY_EMAIL_PATHS_USER.deleted],
-			['disabled', VERIFY_EMAIL_PATHS_USER.disabled],
-			...VERIFY_EMAIL_PATHS_USER.verifyClear.map((p, i): [string, string] => [`verifyClear[${i}]`, p]),
-			...VERIFY_EMAIL_PATHS_USER.emailChangeClear.map((p, i): [string, string] => [`emailChangeClear[${i}]`, p])
-		]
-
-		for (const [key, dottedPath] of table) {
-			expect(User.schema.path(dottedPath), `${key} -> ${dottedPath}`).toBeDefined()
-		}
-	})
-
-	// Both are re-exported because the registration resolvers need the hash minter and the router
-	// needs the handler — and neither may be taken from koa-utils' own exports, which are bound to
-	// UserBase.
-	it('re-exports the flow-bound router factory and hash minter', () => {
-		expect(routerVerifyEmailUser).toBe(boundRouterVerifyEmail)
-		expect(setEmailHashUser).toBe(boundSetEmailHash)
-	})
-})
 
 describe('resetPwdFlowUser', () => {
 	it('builds the flow exactly once, against the User model', () => {

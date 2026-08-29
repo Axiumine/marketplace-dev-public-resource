@@ -17,6 +17,7 @@ export interface IChain {
 	sort: Mock
 	skip: Mock
 	limit: Mock
+	session: Mock
 	lean: Mock
 }
 
@@ -26,6 +27,9 @@ export const chain = (docs: unknown): IChain => {
 	self.sort = vi.fn(() => self)
 	self.skip = vi.fn(() => self)
 	self.limit = vi.fn(() => self)
+	// The registration reads carry a `session`; the public ones never do. One link serves both, and a
+	// suite that cares which asserts on the mock rather than on the chain's shape.
+	self.session = vi.fn(() => self)
 	self.lean = vi.fn(async () => docs)
 
 	return self

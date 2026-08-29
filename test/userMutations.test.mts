@@ -1,15 +1,13 @@
+// noinspection DuplicatedCode -- what this shares with shopOwnerRegisterMutation.test.mts is the mock
+// declarations, and none of it can move: `vi.mock` is hoisted to the top of the file that declares it, so a
+// handle imported from a shared module is not yet bound when its own factory runs.
+
 import { GraphQLBoolean, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const guardPublicWrite = vi.fn()
-const sendUserVerifyEmail = vi.fn()
-const setEmailHashUser = vi.fn(async () => 'hash-reissued')
-const purgeClosedUser = vi.fn()
-const registerNewUser = vi.fn(async () => 'hash-fresh')
-const restartUserRegistration = vi.fn()
-const userForRegistration = vi.fn()
-const emailAlreadyValid = vi.fn()
+const submitUserRegistration = vi.fn()
+const resendUserRegistration = vi.fn()
 const checkEmailLen = vi.fn()
 const checkPwdLen = vi.fn()
 const endEverySessionUser = vi.fn()
@@ -19,44 +17,13 @@ const boundUpdatePwdResolve = vi.fn(async () => 'delegated-update')
 const BOUND_RESET_TYPE = new GraphQLNonNull(GraphQLBoolean)
 const BOUND_UPDATE_TYPE = new GraphQLNonNull(GraphQLBoolean)
 
-// `vi.hoisted`, unlike the plain consts above, because this file imports `mongoose` itself: the mock
-// factory runs while that import is evaluated, which is before any top-level `const` in the file has
-// been initialised. The other factories are only reached by the dynamic imports in `beforeEach`.
-const { endSession, session, startSession, withTransaction } = vi.hoisted(() => {
-	const endSessionFn = vi.fn()
-	const withTransactionFn = vi.fn(async (work: () => Promise<void>) => await work())
-	const sessionObj = { withTransaction: withTransactionFn, endSession: endSessionFn }
-
-	return {
-		endSession: endSessionFn,
-		session: sessionObj,
-		startSession: vi.fn(async () => sessionObj),
-		withTransaction: withTransactionFn
-	}
-})
-
-vi.mock('mongoose', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('mongoose')>()
-
-	return { ...actual, default: { ...actual.default, startSession } }
-})
-
 vi.mock('@axiumine/koa-utils/lib/checkEmailLen', () => ({ checkEmailLen }))
 vi.mock('@axiumine/koa-utils/lib/checkPwdLen', () => ({ checkPwdLen }))
-vi.mock('@axiumine/koa-utils/email/SocketLabsLib', () => ({
-	SocketLabsLib: vi.fn(function mockSocketLabsLib() {
-		return { emailAlreadyValid }
-	})
-}))
 
 vi.mock('../src/lib/access/endEverySession.mts', () => ({ endEverySessionUser }))
 vi.mock('../src/lib/access/guardPublicWrite.mts', () => ({ guardPublicWrite }))
-vi.mock('../src/lib/access/sendUserVerifyEmail.mts', () => ({ sendUserVerifyEmail }))
-vi.mock('../src/lib/access/verifyEmailFlowUser.mts', () => ({ setEmailHashUser }))
-vi.mock('../src/lib/db/purgeClosedUser.mts', () => ({ purgeClosedUser }))
-vi.mock('../src/lib/db/registerNewUser.mts', () => ({ registerNewUser }))
-vi.mock('../src/lib/db/restartUserRegistration.mts', () => ({ restartUserRegistration }))
-vi.mock('../src/lib/db/userForRegistration.mts', () => ({ userForRegistration }))
+vi.mock('../src/lib/registration/submitRegistration.mts', () => ({ submitUserRegistration }))
+vi.mock('../src/lib/registration/resendRegistration.mts', () => ({ resendUserRegistration }))
 vi.mock('../src/lib/access/resetPwdFlowUser.mts', () => ({
 	userResetPwd: { type: BOUND_RESET_TYPE, resolve: boundResetPwdResolve },
 	userUpdatePwd: { type: BOUND_UPDATE_TYPE, resolve: boundUpdatePwdResolve }
@@ -71,8 +38,6 @@ let userVerifyEmailResend: (typeof import('../src/graphQLPublic/schema/mutations
 let userResetPwd: (typeof import('../src/graphQLPublic/schema/mutations/userResetPwd.mts'))['userResetPwd']
 let userUpdatePwd: (typeof import('../src/graphQLPublic/schema/mutations/userUpdatePwd.mts'))['userUpdatePwd']
 
-const userId = new Types.ObjectId('507f1f77bcf86cd799439011')
-
 /** Mixed case and trailing space, because normalisation is asserted on nearly every path below. */
 const TYPED_EMAIL = ' Customer@Marketplace.TEST '
 const EMAIL = 'customer@marketplace.test'
@@ -84,9 +49,6 @@ const guardedWith = () => guardPublicWrite.mock.calls[0][0]
 
 beforeEach(async () => {
 	vi.clearAllMocks()
-	setEmailHashUser.mockResolvedValue('hash-reissued')
-	registerNewUser.mockResolvedValue('hash-fresh')
-	userForRegistration.mockResolvedValue(null)
 	;({ userRegister } = await import('../src/graphQLPublic/schema/mutations/userRegister.mts'))
 	;({ userVerifyEmailResend } = await import('../src/graphQLPublic/schema/mutations/userVerifyEmailResend.mts'))
 	;({ userResetPwd } = await import('../src/graphQLPublic/schema/mutations/userResetPwd.mts'))
@@ -130,13 +92,13 @@ describe('userRegister — validation, before anything is spent', () => {
 		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow('email too long')
 
 		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(startSession).not.toHaveBeenCalled()
+		expect(submitUserRegistration).not.toHaveBeenCalled()
 	})
 
 	// ⚠️ **`repeatPassword` is a control here and a courtesy in the form.** The frontend check exists to
 	// tell the typist before they submit; nothing stops a client from not being that frontend. Checking
 	// it server-side is what makes "the customer confirmed their password" true rather than rendered.
-	it('refuses two different passwords, before the guard and before the transaction', async () => {
+	it('refuses two different passwords, before the guard and before the submission', async () => {
 		// koa-utils puts the readable half in `extensions.description` and keeps `message` at the status
 		// title, so asserting on `message` alone would pass for every 400 this mutation can raise.
 		await expect(userRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' })).rejects.toMatchObject({
@@ -145,7 +107,7 @@ describe('userRegister — validation, before anything is spent', () => {
 		})
 
 		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(startSession).not.toHaveBeenCalled()
+		expect(submitUserRegistration).not.toHaveBeenCalled()
 	})
 
 	it('compares the passwords byte for byte, not case-insensitively', async () => {
@@ -175,161 +137,70 @@ describe('userRegister — the guard', () => {
 		expect(guardedWith().email).toBe(EMAIL)
 	})
 
-	it('never opens a transaction once the guard has refused', async () => {
+	// ⚠️ The guard runs before the submission, so a refused caller costs one Redis counter and nothing
+	// else: no bcrypt round, no pending record, and above all no mail. A guard that ran afterwards would
+	// meter the answer while the mail had already gone out.
+	it('submits nothing once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
 		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow('Too many requests')
 
-		expect(startSession).not.toHaveBeenCalled()
-		expect(userForRegistration).not.toHaveBeenCalled()
+		expect(submitUserRegistration).not.toHaveBeenCalled()
+	})
+
+	it('guards before it submits', async () => {
+		await userRegister.resolve(null, registerArgs)
+
+		expect(guardPublicWrite.mock.invocationCallOrder[0]).toBeLessThan(submitUserRegistration.mock.invocationCallOrder[0])
 	})
 })
 
-describe('userRegister — the four outcomes', () => {
-	// ⚠️ **All four answer `true`, and that is the security property rather than laziness.** A mutation
-	// that throws 409 for a taken address is an account-enumeration oracle: anyone can ask it, one
-	// address at a time, who has an account here. The outcomes are distinguishable only in the inbox.
-	it('writes the document and sends the link when the address is free', async () => {
-		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(userForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
-		expect(registerNewUser).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret', session)
-		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-fresh')
-		expect(restartUserRegistration).not.toHaveBeenCalled()
-		expect(emailAlreadyValid).not.toHaveBeenCalled()
-		expect(purgeClosedUser).not.toHaveBeenCalled()
-	})
-
-	// ⚠️ A verified document is somebody's account: nothing is written to it — not the password, not the hash.
-	// The "you already have an account" mail is the one message that helps its owner (they forgot they
-	// registered) without telling anybody else the address is taken.
-	it('writes nothing at all to a verified account, and says so only in the inbox', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true } })
-
-		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(emailAlreadyValid).toHaveBeenCalledExactlyOnceWith(EMAIL)
-		expect(registerNewUser).not.toHaveBeenCalled()
-		expect(restartUserRegistration).not.toHaveBeenCalled()
-		expect(setEmailHashUser).not.toHaveBeenCalled()
-		expect(sendUserVerifyEmail).not.toHaveBeenCalled()
-		expect(purgeClosedUser).not.toHaveBeenCalled()
-	})
-
-	// ⚠️ **A closed account is destroyed and the address registered fresh** (ADR-011 §Amendment
-	// 2026-08-26). The document was already condemned — `user.deleted_ttl` removes it thirty days after
-	// `userDel` stamped it — so this only brings the removal forward to the request that needs the
-	// address, which makes the erasure earlier than the retention rule requires rather than later. Before
-	// it existed, closing an account burned its address for a month and answered "you are already
-	// registered" the whole time, about an account nobody could log into.
-	it('destroys a closed account and registers the address again from scratch', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true }, deleted: new Date() })
-
-		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(purgeClosedUser).toHaveBeenCalledExactlyOnceWith(session, userId)
-		expect(registerNewUser).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret', session)
-		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-fresh')
-		expect(emailAlreadyValid).not.toHaveBeenCalled()
-		expect(restartUserRegistration).not.toHaveBeenCalled()
-		expect(setEmailHashUser).not.toHaveBeenCalled()
-	})
-
-	// ⚠️ **The old document has to be gone before the new one is written, and the order is not stylistic.**
-	// `login.email_unique` carries no `partialFilterExpression`, so both documents would hold the same
-	// address at once: inside the transaction the insert fails on the index, the whole registration aborts,
-	// and the customer is told nothing while nothing at all happens.
-	it('deletes before it inserts, or the unique index refuses the new document', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: true }, deleted: new Date() })
-
+describe('userRegister — what it hands the flow', () => {
+	// ⚠️ **Nothing is written to MongoDB by this resolver** (ADR-042). A submitted registration is a Redis
+	// record with a three-day TTL and the `user` document is created by the confirmation click and by
+	// nothing else. What this replaced was four branches over a half-built document: an unverified row held
+	// the address against everybody else, an abandoned one was tombstoned lazily and so often never at all,
+	// and a closed one had to be hard-deleted to free its address. None of those states can exist now,
+	// because the state that used to hold them is not in the collection — so the resolver is the
+	// normalisation, the two length checks, the guard and a call. What the call does about a free, a live
+	// or a closed address is `submitRegistration.test.mts`.
+	it('submits the canonical address and the password as typed', async () => {
 		await userRegister.resolve(null, registerArgs)
 
-		expect(purgeClosedUser.mock.invocationCallOrder[0]).toBeLessThan(registerNewUser.mock.invocationCallOrder[0])
-		expect(registerNewUser.mock.invocationCallOrder[0]).toBeLessThan(sendUserVerifyEmail.mock.invocationCallOrder[0])
+		expect(submitUserRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret')
 	})
 
-	// ⚠️ **Both halves of the condition are load-bearing, and the branch is ordered before the verified one
-	// on purpose.** A closed document is verified too, so the two conditions overlap: the other order makes
-	// this branch unreachable. `deleted` alone is not enough either — an unverified stamp is an abandoned
-	// attempt, and destroying it would answer a mistyped password with a hard delete.
-	it.each([
-		['live and verified', { _id: userId, emailVerify: { valid: true } }],
-		['stamped but never verified', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }],
-		['stamped with no emailVerify at all', { _id: userId, deleted: new Date() }]
-	])('leaves %s well alone — only a verified stamp is a closed account', async (_desc, existing) => {
-		userForRegistration.mockResolvedValueOnce(existing)
+	// ⚠️ **The customer flow, never the seller one.** Both take an address and a password and neither can
+	// tell them apart; the wrong binding here would open a `shopOwner` account — behind an approval queue
+	// nobody is waiting on — for somebody who asked to be a customer.
+	it('submits through the customer binding', async () => {
+		const module = await import('../src/lib/registration/submitRegistration.mts')
 
+		expect(submitUserRegistration).toBe(module.submitUserRegistration)
+	})
+
+	// ⚠️ **Every outcome answers `true`, and that is the security property rather than laziness.**
+	// koa-utils' `signUp` throws a 409 when the address is taken, which turns the mutation into an
+	// account-enumeration oracle: anybody can ask it, one address at a time, who has an account here. The
+	// outcomes are distinguishable only in the inbox.
+	it('answers true whatever the flow found', async () => {
 		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(purgeClosedUser).not.toHaveBeenCalled()
-	})
-
-	// An unfinished attempt — possibly with a mistyped password, possibly tombstoned by the three-day
-	// guard. Restarting it is what keeps the address usable by the person who chose it; the unique index
-	// on `login.email` means the alternative is that they can never register it at all.
-	it('restarts an unverified attempt with the new password and a new hash', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
-
-		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(restartUserRegistration).toHaveBeenCalledExactlyOnceWith(session, userId, 'sup3r-secret')
-		expect(setEmailHashUser).toHaveBeenCalledExactlyOnceWith(session, userId)
-		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
-		expect(registerNewUser).not.toHaveBeenCalled()
-	})
-
-	// The optional chain matters: `emailVerify` is absent on a document whose registration was interrupted
-	// between the insert and the flow. Reading that as "verified" would lock the address forever.
-	it.each([
-		['no emailVerify subdocument at all', { _id: userId }],
-		['an emailVerify with no valid flag', { _id: userId, emailVerify: {} }],
-		['a tombstoned unverified document', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }]
-	])('treats %s as an unfinished attempt', async (_desc, existing) => {
-		userForRegistration.mockResolvedValueOnce(existing)
-
-		await expect(userRegister.resolve(null, registerArgs)).resolves.toBe(true)
-
-		expect(restartUserRegistration).toHaveBeenCalledOnce()
-		expect(emailAlreadyValid).not.toHaveBeenCalled()
-	})
-
-	// The restart is ordered: password first, then the hash, then the mail. A mail sent before the document
-	// was rewritten would carry a link that activates the *old* password.
-	it('rewrites the document before it mints the hash, and mints before it sends', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
-
-		await userRegister.resolve(null, registerArgs)
-
-		expect(restartUserRegistration.mock.invocationCallOrder[0]).toBeLessThan(setEmailHashUser.mock.invocationCallOrder[0])
-		expect(setEmailHashUser.mock.invocationCallOrder[0]).toBeLessThan(sendUserVerifyEmail.mock.invocationCallOrder[0])
-	})
-})
-
-describe('userRegister — the transaction', () => {
-	// One transaction so a mail is never sent for a document that failed to write. The reverse — document written,
-	// SocketLabs then refuses — stays possible by design, and `userVerifyEmailResend` is the recovery.
-	it('does all of its work inside one transaction, and always ends the session', async () => {
-		await userRegister.resolve(null, registerArgs)
-
-		expect(startSession).toHaveBeenCalledOnce()
-		expect(withTransaction).toHaveBeenCalledOnce()
-		expect(endSession).toHaveBeenCalledOnce()
-	})
-
-	it('ends the session even when the transaction throws', async () => {
-		registerNewUser.mockRejectedValueOnce(new Error('write conflict'))
-
-		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow()
-
-		expect(endSession).toHaveBeenCalledOnce()
 	})
 
 	// `tryCatchRethrow` is what turns an unexpected driver error into a GraphQL error without leaking the
 	// driver's message; a failure has to keep failing, not be swallowed into a `true`.
-	it('rethrows rather than answering true on a failed write', async () => {
-		registerNewUser.mockRejectedValueOnce(new Error('write conflict'))
+	it('rethrows rather than answering true when the flow fails', async () => {
+		submitUserRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
 
 		await expect(userRegister.resolve(null, registerArgs)).rejects.toThrow()
+	})
+
+	it('does not leak the driver’s message to the caller', async () => {
+		submitUserRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
+
+		await expect(userRegister.resolve(null, registerArgs)).rejects.toMatchObject({
+			message: 'Internal Server Error'
+		})
 	})
 })
 
@@ -343,6 +214,13 @@ describe('userVerifyEmailResend', () => {
 		expect(Object.keys(userVerifyEmailResend.args)).toEqual(['email', 'turnstileToken'])
 		expect(userVerifyEmailResend.args.email.type).toBeInstanceOf(GraphQLNonNull)
 		expect(userVerifyEmailResend.args.turnstileToken.type).toBe(GraphQLString)
+	})
+
+	// ⚠️ No password argument, and there must not be one. A resend re-sends a link for a registration that
+	// already carries the password its submitter chose; accepting one here would let anybody who knows an
+	// address change the password a pending registration is about to be activated with.
+	it('takes an address and nothing else', () => {
+		expect(Object.keys(userVerifyEmailResend.args)).not.toContain('password')
 	})
 
 	// Same ceiling as registration, in a bucket of its own: this path sends a mail and writes nothing
@@ -359,69 +237,42 @@ describe('userVerifyEmailResend', () => {
 		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
 	})
 
-	// Minting through `setEmailHashUser` also resets `requestTimes`, which is right: the strikes counted
-	// attempts against the *old* hash, and the caller is about to be given a new one.
-	it('re-issues the link for a live unverified registration', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
-
-		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
-
-		expect(setEmailHashUser).toHaveBeenCalledExactlyOnceWith(session, userId)
-		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
-	})
-
-	// ⚠️ All four outcomes are `true` and silent, for the reason `userRegister` is. A tombstoned document is
-	// left alone here and *not* restarted: reviving it from an argument list with no password would let
-	// anyone keep somebody else's abandoned document alive indefinitely. Registering again is the recovery,
-	// and it proves who is asking by setting a password only the mail can activate.
-	it.each([
-		['no such registration', null],
-		['a tombstoned document', { _id: userId, emailVerify: { valid: false }, deleted: new Date() }],
-		['an account that is already verified', { _id: userId, emailVerify: { valid: true } }]
-	])('answers true and sends nothing for %s', async (_desc, existing) => {
-		userForRegistration.mockResolvedValueOnce(existing)
-
-		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
-
-		expect(setEmailHashUser).not.toHaveBeenCalled()
-		expect(sendUserVerifyEmail).not.toHaveBeenCalled()
-		expect(userForRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, session)
-	})
-
-	// ⚠️ The `?.` is load-bearing on a document the projection allows to arrive without `emailVerify` — a
-	// registration interrupted between its insert and its hash, or written by an older path. Reading
-	// `.valid` straight off it throws a TypeError inside the transaction, which `tryCatchRethrow` turns
-	// into a 500 on a mutation whose entire contract is "answers true and says nothing".
-	it('treats a document with no emailVerify as unverified, and re-issues rather than throwing', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId })
-
-		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
-
-		expect(sendUserVerifyEmail).toHaveBeenCalledExactlyOnceWith(EMAIL, 'hash-reissued')
-	})
-
-	it('ends the session on every path, including the ones that write nothing', async () => {
+	// The length check but not the password one: there is no password on this mutation to check.
+	it('checks the address length and has no password to check', async () => {
 		await userVerifyEmailResend.resolve(null, resendArgs)
 
-		expect(withTransaction).toHaveBeenCalledOnce()
-		expect(endSession).toHaveBeenCalledOnce()
+		expect(checkPwdLen).not.toHaveBeenCalled()
+	})
+
+	it('re-issues under the canonical address', async () => {
+		await userVerifyEmailResend.resolve(null, resendArgs)
+
+		expect(resendUserRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL)
+	})
+
+	// ⚠️ **`true` for every address, pending or not.** Both outcomes — no pending registration, link
+	// re-issued — look identical from outside, which is what stops the mutation being an enumeration
+	// oracle that costs nothing to query. Which of the two happened is `resendRegistration.test.mts`.
+	it('answers true whether or not anything was pending', async () => {
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
+
+		resendUserRegistration.mockResolvedValueOnce(undefined)
+
+		await expect(userVerifyEmailResend.resolve(null, resendArgs)).resolves.toBe(true)
 	})
 
 	it('rethrows a failed send instead of reporting success', async () => {
-		userForRegistration.mockResolvedValueOnce({ _id: userId, emailVerify: { valid: false } })
-		sendUserVerifyEmail.mockRejectedValueOnce(new Error('SocketLabs refused'))
+		resendUserRegistration.mockRejectedValueOnce(new Error('SocketLabs refused'))
 
 		await expect(userVerifyEmailResend.resolve(null, resendArgs)).rejects.toThrow()
-
-		expect(endSession).toHaveBeenCalledOnce()
 	})
 
-	it('never opens a transaction once the guard has refused', async () => {
+	it('re-issues nothing once the guard has refused', async () => {
 		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
 		await expect(userVerifyEmailResend.resolve(null, resendArgs)).rejects.toThrow('Too many requests')
 
-		expect(startSession).not.toHaveBeenCalled()
+		expect(resendUserRegistration).not.toHaveBeenCalled()
 	})
 })
 

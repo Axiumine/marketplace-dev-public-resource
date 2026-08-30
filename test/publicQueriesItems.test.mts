@@ -378,7 +378,7 @@ describe('searchCompanies', () => {
 	// ⚠️ `trusted()` on the `Query` filter. `sanitizeFilter` would rewrite both `$text` and the
 	// `$geoWithin` on `address.position` into equality tests against literal objects — filters that match
 	// nothing, silently, and read as "no results".
-	it('tags every operator in the filter it hands mongoose', async () => {
+	it('tags every admin in the filter it hands mongoose', async () => {
 		await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
 
 		const filter = companyFind.mock.calls[0][0]

@@ -54,7 +54,7 @@ const MAX_QUERY_LENGTH = 120
  * ## The geographic bound, and why it is `$geoWithin` rather than `$near`
  *
  * `$near` and `$geoNear` sort by distance, and a query may have exactly one sort. A text search's
- * sort is its relevance — that is the whole point of searching — so a proximity operator that also
+ * sort is its relevance — that is the whole point of searching — so a proximity admin that also
  * sorts cannot be combined with `$text` at all; MongoDB refuses the combination outright rather than
  * picking one. `$geoWithin` / `$centerSphere` is a pure predicate with no sort of its own, so it
  * composes: results are ordered by relevance and *filtered* by distance. The trade-off is real and
@@ -62,7 +62,7 @@ const MAX_QUERY_LENGTH = 120
  *
  * ## trusted()
  *
- * `sanitizeFilter` is on globally and wraps any non-`$` key whose value carries `$` operators into
+ * `sanitizeFilter` is on globally and wraps any non-`$` key whose value carries `$` admins into
  * `{ $eq: … }`. Both the `$text` operator and the `$geoWithin` on `address.position` would be
  * rewritten into equality tests against literal objects — filters that match nothing, silently, and
  * read as "no results". Aggregation stages never pass through `sanitizeFilter`, which is why the

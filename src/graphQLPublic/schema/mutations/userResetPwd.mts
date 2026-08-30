@@ -20,7 +20,7 @@ export interface IUserResetPwdArgs extends IResetPwdArgs {
  * privacy behaviour and the mail all exactly as the library defines them.
  *
  * ⚠️ The shop-owner `resetPwd` next to it in the schema is **not** guarded, and that asymmetry is
- * deliberate: the operator and shop-owner apps ship today and send no Turnstile token, so gating them is
+ * deliberate: the admin and shop-owner apps ship today and send no Turnstile token, so gating them is
  * a coordinated frontend change. The customer tier has no such constraint — its frontend does not exist
  * yet, so it is born with the gate on.
  *

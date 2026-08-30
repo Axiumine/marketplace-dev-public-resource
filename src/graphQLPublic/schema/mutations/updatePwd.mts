@@ -14,7 +14,7 @@ import { GraphQLError } from 'graphql'
  * triple to drift from the one koa-utils actually reads.
  *
  * ⚠️ **No `guardPublicWrite`, unlike `userUpdatePwd` next door, and the asymmetry is deliberate** — the
- * shop-owner and operator frontends already call this pair and send no Turnstile token, so gating it would
+ * shop-owner and admin frontends already call this pair and send no Turnstile token, so gating it would
  * break them on deploy. The same note is on the field list in `mutations.mts`. Adding the gate here is a
  * coordinated change with `marketplace-shopowner`, not a tidy-up.
  *

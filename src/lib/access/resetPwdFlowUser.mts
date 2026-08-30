@@ -58,7 +58,7 @@ const RESET_PATH_USER = '/reset-password/confirm#'
  * `account.name` and read `undefined` for every customer, named or not.
  *
  * The mailer is the whole reason this module is not one line. `sendEmailReset` builds its link on
- * `APP_DOMAIN`, the operator/shop-owner origin, and a customer who followed it would land on a panel
+ * `APP_DOMAIN`, the admin/shop-owner origin, and a customer who followed it would land on a panel
  * that cannot complete the reset. The resolver cannot pick the host itself — by the time it holds an
  * email and a hash, two collections behind this one process look identical — so the choice is made here,
  * where the collection is already chosen. `APP_DOMAIN_USER` unset falls back to `APP_DOMAIN`: a working

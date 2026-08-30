@@ -385,7 +385,7 @@ describe('itemCategories', () => {
 	})
 
 	// `deleted` is filtered; `published` is not, because categories have no such flag — a category is not
-	// a draft, it exists platform-wide the moment an operator creates it. Soft-deleted documents stay because
+	// a draft, it exists platform-wide the moment an admin creates it. Soft-deleted documents stay because
 	// `item.idCategory` is required and MongoDB has no foreign keys.
 	it('filters only the tombstones, and keeps the trusted tag doing it', async () => {
 		const docs = [{ _id: new Types.ObjectId(), name: 'Bread', slug: 'bread', position: 1 }]

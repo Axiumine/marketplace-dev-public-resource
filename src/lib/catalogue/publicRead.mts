@@ -20,7 +20,7 @@ import { trusted, Types } from 'mongoose'
  * of every in-flight read. A fresh object per call costs nothing and cannot be aliased.
  *
  * trusted(): `sanitizeFilter` is on globally, so a bare `{ $exists: false }` is taken as a literal
- * value and cast against the `deleted` path instead of being read as an operator — the filter then
+ * value and cast against the `deleted` path instead of being read as an admin — the filter then
  * silently matches nothing rather than matching the live documents. It is the single most repeated trap
  * in this codebase.
  *

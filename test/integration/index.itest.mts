@@ -577,7 +577,7 @@ async function accountsByEmail(tier: Tier, email: string) {
  * Closes an account the way the admin service will: two stamps, and nothing removed.
  *
  * `deletedBy` names the actor (ADR-044) and is here so the restore can be shown to clear it — a
- * `deletedBy` left behind on a live account names an operator who closed something that is open.
+ * `deletedBy` left behind on a live account names an admin who closed something that is open.
  */
 async function closeShopOwner(_id: mongoose.Types.ObjectId) {
 	await db()
@@ -683,7 +683,7 @@ describe('the activation link is what opens the account', () => {
 	})
 
 	// ⚠️ `waitApprov` is written here or nowhere. Selling on the platform is a commercial relationship
-	// with the operator, so a stranger may ask to become a shop owner but may not become one by
+	// with the admin, so a stranger may ask to become a shop owner but may not become one by
 	// filling in a form — and before ADR-042 the flag lived on a document a public mutation could
 	// reach, which is how the deleted restart path revived an account with the gate already cleared.
 	it('opens a shop owner parked behind the approval queue', async () => {
@@ -782,9 +782,9 @@ describe('a closed account is handed back to whoever proves they can read mail a
 
 	// ⚠️ The platform owner's ruling in the same breath: *"the state of waitApprove is true, so admin can
 	// not approve the user if it is a problem"*. Coming back is re-entry through the door a first
-	// registration uses, so the operator gets the same veto over a returning seller as over a new one —
+	// registration uses, so the admin gets the same veto over a returning seller as over a new one —
 	// and it is the only human checkpoint on somebody registering at a recycled mailbox.
-	it('goes back in front of the operator rather than straight into a shop', async () => {
+	it('goes back in front of the admin rather than straight into a shop', async () => {
 		const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
 		await closeShopOwner(closedId)
 

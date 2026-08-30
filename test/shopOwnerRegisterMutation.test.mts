@@ -45,9 +45,7 @@ describe('shopOwnerRegister — the field', () => {
 	// The description is the one place a reader of the schema learns that this does not produce a seller,
 	// only a request to be one — so it is pinned, not merely present.
 	it('answers a non-nullable Boolean and says the account is pending approval', () => {
-		expect(shopOwnerRegister.description).toBe(
-			'Register a new shop owner, pending operator approval, and send the activation link'
-		)
+		expect(shopOwnerRegister.description).toBe('Register a new shop owner, pending admin approval, and send the activation link')
 		expect(shopOwnerRegister.type).toBeInstanceOf(GraphQLNonNull)
 		expect((shopOwnerRegister.type as GraphQLNonNull<typeof GraphQLBoolean>).ofType).toBe(GraphQLBoolean)
 	})
@@ -65,7 +63,7 @@ describe('shopOwnerRegister — the field', () => {
 	// ⚠️ No `personalData` argument, and there must not be one. The registration is an address and a
 	// password; a form that also collected a name and a birth date would put five more strings on an
 	// unauthenticated mutation and gain nothing — nobody has been identified yet, and onboarding asks
-	// once the operator has approved the account.
+	// once the admin has approved the account.
 	it('collects credentials only, no identity', () => {
 		expect(Object.keys(shopOwnerRegister.args)).not.toContain('personalData')
 		expect(Object.keys(shopOwnerRegister.args)).not.toContain('firstName')

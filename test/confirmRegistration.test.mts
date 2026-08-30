@@ -270,7 +270,7 @@ describe('confirmRegistration — opening the account', () => {
 	// path is modified and `create` routes through `save`, so a `create` here would store
 	// `bcrypt(bcrypt(password))` and open an account nobody can ever log into. `insertMany` runs no `save`
 	// middleware and still runs `pre('insertMany')`, whose encryption pass is idempotent over the `Binary`.
-	it('uses the operator that runs no save middleware', async () => {
+	it('uses the admin that runs no save middleware', async () => {
 		await confirmRegistration('anna@test.it', HASH)
 
 		expect(insertMany).toHaveBeenCalledOnce()
@@ -396,7 +396,7 @@ describe('confirmRegistration — restoring a closed account', () => {
 	})
 
 	// ⚠️ The empty strings are the `$unset` operand MongoDB wants and are asserted as written: `deletedBy`
-	// left behind names an operator on a live account, and `deleted` left behind is an account that is
+	// left behind names an admin on a live account, and `deleted` left behind is an account that is
 	// back but still refused at every login gate.
 	it('clears the closure and the actor who made it', async () => {
 		addressHeldBy(closedHolder)
@@ -436,7 +436,7 @@ describe('confirmRegistration — restoring a closed account', () => {
 
 	// ⚠️ **A suspended-then-closed account comes back suspended.** Only the Admin tier lifts a suspension
 	// (ADR-044), and an undo the subject performs on themselves must not be the way around one.
-	it('leaves a suspension exactly where the operator left it', async () => {
+	it('leaves a suspension exactly where the admin left it', async () => {
 		addressHeldBy(closedHolder)
 
 		await confirmRegistration('anna@test.it', HASH)
@@ -449,7 +449,7 @@ describe('confirmRegistration — restoring a closed account', () => {
 
 	// ⚠️ The platform owner's ruling of 2026-08-29: *"the state of waitApprove is true, so admin can not
 	// approve the user if it is a problem"*. Coming back is re-entry through the door a first registration
-	// uses, so the operator gets the same veto — and it is the only human checkpoint on a recycled mailbox.
+	// uses, so the admin gets the same veto — and it is the only human checkpoint on a recycled mailbox.
 	it('re-raises the approval gate on the seller tier', async () => {
 		addressHeldBy(closedHolder)
 

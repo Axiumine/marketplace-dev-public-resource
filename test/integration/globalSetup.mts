@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { MongoClient } from 'mongodb'
 
+import { seedKeygripRecord } from '../../vitest.keygrip.mts'
 import { assertTestMongoEnv, buildTestMongoUrl, TEST_CSFLE_MASTER_KEY_PATH, TEST_DB } from '../../vitest.mongo.mts'
 
 /**
@@ -62,6 +63,11 @@ export async function setup(): Promise<void> {
 	// The demo seed is gated on SEED_DEMO and must stay a no-op: the suite seeds its own documents
 	// and counts them, which fixed demo documents would silently offset.
 	process.env.SEED_DEMO = 'false'
+
+	// ⚠️ The keygrip record start() refuses to boot without (ADR-034). This suite runs in its own
+	// Redis namespace, which `yarn seed:keygrip` has never written into, so provisioning it belongs
+	// here beside the throwaway CSFLE key above. Opaque, and never opened — see vitest.keygrip.mts.
+	await seedKeygripRecord()
 
 	const client = new MongoClient(buildTestMongoUrl('owner'))
 	try {

@@ -51,8 +51,8 @@ entire service is written in `.mts` (ESM → `.mjs`). Verified empirically:
 
 | Invocation | Rules that run |
 |---|---|
-| `semgrep scan --config … src` (plain) | **36** of 124 — only `<multilang>`; every TypeScript rule is skipped |
-| current setup (`--scan-unknown-extensions` + explicit files) | **122** — TS + secrets + custom all run |
+| `semgrep scan --config … src` (plain) | **36** of 123 — only `<multilang>`; every TypeScript rule is skipped |
+| current setup (`--scan-unknown-extensions` + explicit files) | **121** — TS + secrets + custom all run |
 
 Cause: semgrep selects a parser by file extension; `.mts` maps to nothing, so
 the file is treated as generic and all `typescript`/`javascript` rules are
@@ -86,7 +86,7 @@ are missing. GitNexus has the same `.mts` gap on this platform.)
   file once per rule-language; a `.mts` parsed as JS (or vice-versa) partially
   fails, dragging the aggregate metric down. It is not a real parse failure of
   the TypeScript rules.
-- **Language coverage is deliberately narrow:** TypeScript + secrets + the three
+- **Language coverage is deliberately narrow:** TypeScript + secrets + the two
   custom rules. Other-language rule families (python, java, go, …) are excluded
   by design via the targeted vendored packs.
 - If semgrep ever ships native `.mts` support, drop `--scan-unknown-extensions`

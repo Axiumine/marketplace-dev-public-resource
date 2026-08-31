@@ -52,8 +52,7 @@ export default defineConfig({
 						REDIS_IS_CLUSTER: '0',
 						REDIS_URL: 'redis://127.0.0.1:6379',
 						REDIS_KEY: 'test:',
-						MONGODB_URI: 'mongodb://127.0.0.1:27017/test',
-						INTROSPECTION_CODE: 'test-introspection-code'
+						MONGODB_URI: 'mongodb://127.0.0.1:27017/test'
 					}
 				}
 			},
@@ -81,7 +80,6 @@ export default defineConfig({
 					env: {
 						NODE_ENV: 'test',
 						REDIS_KEY: 'marketplaceDev:itest:publicResource:',
-						INTROSPECTION_CODE: 'test-introspection-code',
 						PORT: '0',
 						MONGODB_URI: buildTestMongoUrl('rw'),
 						// ADR-029. start() refuses to boot without these two, and the file the first one

@@ -100,9 +100,10 @@ describe('createEndEverySession — the revoke', () => {
 		expect(typeof revokedWith().accountId).toBe('string')
 	})
 
-	// ⚠️ The whole revoke, deliberately. E15-S05's helper also deletes the caller's own access key, because
-	// an authenticated caller presents a bearer token; this caller presents none — the reset form is
-	// reachable with no session at all — and since R54 the routine retires both halves of what it names.
+	// ⚠️ The whole revoke, deliberately. The authenticated services' helper also deletes the caller's own
+	// access key, because an authenticated caller presents a bearer token; this caller presents none — the
+	// reset form is reachable with no session at all — and since R54 the routine retires both halves of
+	// what it names.
 	it('issues no second command of its own', async () => {
 		const { model } = modelYielding({ _id: new Types.ObjectId(ACCOUNT_ID) })
 

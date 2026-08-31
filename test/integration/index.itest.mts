@@ -620,8 +620,8 @@ describe('a submitted registration is a Redis record and nothing else', () => {
 
 	// bcrypt at submit rather than at confirm, so the plaintext dies with the request that carried it.
 	// It is also what makes the confirm's `insertMany` correct: no `save` middleware runs there, so
-	// this value lands in `login.password` exactly as it is — hashing in both places is what stored
-	// `bcrypt(bcrypt(password))` in E18-S09 and opened accounts nobody could log in to.
+	// this value lands in `login.password` exactly as it is — hashing in both places is what once stored
+	// `bcrypt(bcrypt(password))` and opened accounts nobody could log in to.
 	it('bcrypts the password once, at submit', async () => {
 		const { password, slot } = await submitRegistration('user')
 

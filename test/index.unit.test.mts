@@ -93,7 +93,7 @@ describe('checkRequiredEnv', () => {
 	 * fails later, at a request, somewhere that does not name the cause; a name added here and read
 	 * nowhere makes every environment carry a value that does nothing. A length check passes a swap and
 	 * a `toContain` passes an addition, so neither notices the change. The order is asserted too — the
-	 * boot names the *first* missing variable, and that is the one an admin goes looking for. E18-S03.
+	 * boot names the *first* missing variable, and that is the one an admin goes looking for.
 	 */
 	it('requires exactly these 20 variables, in this order', () => {
 		expect(REQUIRED_ENV_VARS).toStrictEqual([

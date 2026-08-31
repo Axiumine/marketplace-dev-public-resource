@@ -25,11 +25,12 @@ export interface IUserUpdatePwdArgs extends IUpdatePasswordArgs {
  * link gets. A customer who lets the reset mail sit overnight has to request a new one; that is the
  * library's behaviour and it is not overridden here.
  *
- * ⚠️ **The revoke is inside the try and after the delegate, both deliberately** (E15-S10, the shape
- * E15-S05's call sites established). Before the write, a reset that then failed validation would have
- * logged the customer out of every device for nothing. Outside the try, a Redis that refused would leave
- * this answering `true` with every stolen session still live — the exact lie the story exists to stop
- * telling. Nothing is revoked when the guard or the delegate throws, because neither is reached.
+ * ⚠️ **The revoke is inside the try and after the delegate, both deliberately** — the shape the
+ * authenticated services' call sites established. Before the write, a reset that then failed validation
+ * would have logged the customer out of every device for nothing. Outside the try, a Redis that refused
+ * would leave this answering `true` with every stolen session still live — the exact lie this wrapper
+ * exists to stop telling. Nothing is revoked when the guard or the delegate throws, because neither is
+ * reached.
  */
 export const userUpdatePwd = {
 	description: "Confirm a customer's password reset",

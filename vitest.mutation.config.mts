@@ -45,8 +45,7 @@ export default defineConfig({
 			REDIS_IS_CLUSTER: '0',
 			REDIS_URL: 'redis://127.0.0.1:6379',
 			REDIS_KEY: 'test:',
-			MONGODB_URI: 'mongodb://127.0.0.1:27017/test',
-			INTROSPECTION_CODE: 'test-introspection-code'
+			MONGODB_URI: 'mongodb://127.0.0.1:27017/test'
 		}
 	}
 })

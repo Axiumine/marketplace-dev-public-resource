@@ -88,8 +88,8 @@ export default defineConfig({
 						// names is minted by globalSetup — a throwaway, never the platform's own key.
 						CSFLE_MASTER_KEY_PATH: TEST_CSFLE_MASTER_KEY_PATH,
 						CSFLE_KEY_VAULT_NAMESPACE: TEST_CSFLE_KEY_VAULT_NAMESPACE,
-						// E18-S10 put everything SocketLabsLib reads into REQUIRED_ENV_VARS, so the suite pins
-						// its own placeholders instead of borrowing whatever the developer's .env holds. Two
+						// Everything SocketLabsLib reads is in REQUIRED_ENV_VARS, so the suite pins its own
+						// placeholders instead of borrowing whatever the developer's .env holds. Two
 						// reasons, both about the mail account rather than about passing: no test here drives a
 						// path that really sends (index.itest.mts says which and why), and a run that fell back
 						// to the live credentials would be one edit away from sending for real. `.invalid` is

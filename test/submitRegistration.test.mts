@@ -160,8 +160,7 @@ describe('submitRegistration — the address is free', () => {
 	// ⚠️ **bcrypt here rather than at confirm**, so the plaintext password never outlives the request
 	// that carried it — it is not in Redis and it is not in the record the confirm step reads. The
 	// account is opened with `insertMany`, which runs no `save` middleware, so this value lands in
-	// `login.password` exactly as it is; hashing in both places is what stored `bcrypt(bcrypt(password))`
-	// in E18-S09.
+	// `login.password` exactly as it is; hashing in both places is what once stored `bcrypt(bcrypt(password))`.
 	it('puts no readable password in the record', async () => {
 		accountIs(null)
 

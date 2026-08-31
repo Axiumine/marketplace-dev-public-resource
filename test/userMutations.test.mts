@@ -372,9 +372,9 @@ describe('userUpdatePwd', () => {
 	})
 })
 
-// E15-S10. The public reset flow was the fourth credential write on the platform and the last one that
-// revoked nothing: somebody resetting their password because they believed another person was inside the
-// account changed the lock and left every stolen session open.
+// The public reset flow was the fourth credential write on the platform and the last one that revoked
+// nothing: somebody resetting their password because they believed another person was inside the account
+// changed the lock and left every stolen session open.
 describe('userUpdatePwd — ending the sessions the reset just made resettable', () => {
 	const updateArgs = { email: TYPED_EMAIL, hash: 'reset-hash', password: 'a-new-password', turnstileToken: 'cf-token' }
 

@@ -6,7 +6,7 @@ import { GraphQLError } from 'graphql'
 
 /**
  * Reset confirmation for a shop owner: the bound flow writes the new password, then every session the
- * account holds is revoked (E15-S10).
+ * account holds is revoked.
  *
  * ⚠️ **The field's shape is the delegate's, borrowed rather than restated** — description, type and the
  * three arguments all come off `boundUpdatePwd`. This wrapper exists to add behaviour after the write, not
@@ -18,10 +18,11 @@ import { GraphQLError } from 'graphql'
  * break them on deploy. The same note is on the field list in `mutations.mts`. Adding the gate here is a
  * coordinated change with `marketplace-shopowner`, not a tidy-up.
  *
- * ⚠️ **The revoke is inside the try and after the delegate, both deliberately** (the shape E15-S05's call
- * sites established). Before the write, a reset that then failed validation would have logged the owner out
- * of every device for nothing. Outside the try, a Redis that refused would leave this answering `true` with
- * every stolen session still live, which is the exact lie this story exists to stop telling.
+ * ⚠️ **The revoke is inside the try and after the delegate, both deliberately** — the shape the
+ * authenticated services' call sites established. Before the write, a reset that then failed validation
+ * would have logged the owner out of every device for nothing. Outside the try, a Redis that refused would
+ * leave this answering `true` with every stolen session still live, which is the exact lie this wrapper
+ * exists to stop telling.
  */
 export const updatePwd = {
 	description: boundUpdatePwd.description,

@@ -77,7 +77,7 @@ describe('resetPwdFlowUser', () => {
 	})
 
 	/*
-	 * ⚠️ The trailing `#` is the whole of E12-S26 and the one character in this file that a tidy-up
+	 * ⚠️ The trailing `#` is the whole point of this block and the one character in this file that a tidy-up
 	 * would remove. The link is assembled here the way koa-utils assembles it — `${base}${path}` then
 	 * `/${encodeURI(email)}/${hash}`, `SocketLabsLib.mjs:280-283` — and handed to the platform's own URL
 	 * parser rather than to a regex, so what is asserted is where a *browser* puts the credential: in

@@ -77,8 +77,8 @@ describe('queries.publicHelloArgs', () => {
 		})
 	})
 
-	// E12-S20. The argument reached `console.debug` here and nowhere else in nine services, which is what
-	// made it the one planted marker E12-S12 found on disk. The assertion is on the console object rather
+	// The argument reached `console.debug` here and nowhere else in nine services, which is what made it
+	// the one planted marker the log audit found on disk. The assertion is on the console object rather
 	// than on one method: a later edit that reaches for `log` or `info` instead has changed nothing about
 	// why this line exists.
 	it('writes the caller-supplied name to no console method at all', () => {

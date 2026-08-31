@@ -108,7 +108,7 @@ UPLOAD_DIR=/media/xxx
 #   the recipient of an internal report; nothing on this platform calls either today. Kept rather
 #   than dropped because the moment one of them is wired up an unset value sends the report to the
 #   literal address `undefined` — but it is the only name in this block that can be missing without
-#   a single mail changing. E18-S13 kept it deliberately; the other six it looked at are gone.
+#   a single mail changing. The audit that removed the other six looked at this one and kept it.
 #
 # APP_DOMAIN_USER — origin the CUSTOMER's confirmation link is built on,
 #   `${APP_DOMAIN_USER}/check/verify-email-user/…`. This one process serves two audiences, and their
@@ -124,12 +124,12 @@ EMAIL_FROM=xxx@xxxx.tdweb.lan
 PLATFORM_NAME=Marketplace
 DEV_TEAM_EMAIL=xxx@xxxx.tdweb.lan
 
-# ⚠️ REDIRECT_DOMAIN and HIT_STATS stood here and are gone, E18-S13: no `src/` file in any of the nine
-# services reads either, and no `dist/` file in either @axiumine package does. Do not add them back.
-# ⚠️ Development-only, and the gate is code rather than convention (E13-S11): the
-# `x-introspectioncode` header is honoured only when NODE_ENV is exactly `development` or `test`, and
-# refused under every other value — unset, empty, `staging`, `Production`, a typo. In production it
-# does nothing at all, and a request carrying it is answered exactly as one carrying nothing.
+# ⚠️ REDIRECT_DOMAIN and HIT_STATS stood here and are gone: no `src/` file in any of the nine services
+# reads either, and no `dist/` file in either @axiumine package does. Do not add them back.
+# ⚠️ Development-only, and the gate is code rather than convention: the `x-introspectioncode` header is
+# honoured only when NODE_ENV is exactly `development` or `test`, and refused under every other value —
+# unset, empty, `staging`, `Production`, a typo. In production it does nothing at all, and a request
+# carrying it is answered exactly as one carrying nothing.
 # Still required at boot: unset, `${process.env.INTROSPECTION_CODE}` stringifies to the literal
 # 'undefined', so a service mislabelled as development would hand the bypass to anyone sending that
 # word. Two things have to be wrong before it opens, and this variable is the second.

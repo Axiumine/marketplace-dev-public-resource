@@ -21,10 +21,10 @@ const MutationsPublic = new GraphQLObjectType({
 		// on `APP_DOMAIN_USER`. Two fields rather than one flow choosing at runtime because it cannot:
 		// `user` and `shopOwner` are two collections, and an email plus a hash says nothing about which.
 		//
-		// ⚠️ `resetPwd` is the bound flow itself; `updatePwd` is a local wrapper around it (E15-S10). The
-		// wrapper adds one thing and changes nothing else: a successful reset now ends every session the
-		// account holds, which the flow alone never did. Wiring the bound `updatePwd` straight in again
-		// would silently drop that, and nothing in the schema would look different.
+		// ⚠️ `resetPwd` is the bound flow itself; `updatePwd` is a local wrapper around it. The wrapper adds
+		// one thing and changes nothing else: a successful reset now ends every session the account holds,
+		// which the flow alone never did. Wiring the bound `updatePwd` straight in again would silently drop
+		// that, and nothing in the schema would look different.
 		resetPwd,
 		updatePwd,
 		// ⚠️ Only the mutations below are behind the Turnstile + rate-limit guard. `resetPwd` and

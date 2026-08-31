@@ -36,7 +36,7 @@ export const RESET_PWD_PATHS_USER: IResetPwdPaths = {
  * lands on a 404 with a valid hash in the URL. It has to keep matching `marketplace-user`'s
  * `/reset-password/confirm` route; changing one without the other is invisible to every gate.
  *
- * ⚠️ **The trailing `#` is load-bearing punctuation, not a typo** (E12-S26). `sendEmailReset` normalises
+ * ⚠️ **The trailing `#` is load-bearing punctuation, not a typo.** `sendEmailReset` normalises
  * only `linkPath`'s *leading* slash and then appends the pair itself —
  * `` `${base}${path}/${encodeURI(email)}/${hash}` ``, `koa-utils/dist/email/SocketLabsLib.mjs:280-283` —
  * so this value makes the mailed link `https://host/reset-password/confirm#/<address>/<hash>`. A

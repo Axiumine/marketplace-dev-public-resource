@@ -70,7 +70,7 @@ export const createSubmitRegistration = (target: IRegistrationTarget) =>
 		// bcrypt here rather than at confirm, so the plaintext password never outlives the request that
 		// carried it. The account is opened with `insertMany`, which runs no `save` middleware — so
 		// `LoginSubDocSchema`'s hashing hook does not fire there and this value lands in `login.password`
-		// exactly as it is. Hashing in both places is what stored `bcrypt(bcrypt(password))` in E18-S09.
+		// exactly as it is. Hashing in both places is what once stored `bcrypt(bcrypt(password))`.
 		await writePendingRegistration(slot, {
 			_id: new Types.ObjectId(),
 			password: await encryptPassword(password),

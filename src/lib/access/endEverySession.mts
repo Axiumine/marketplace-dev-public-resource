@@ -41,10 +41,10 @@ interface IAccountId {
 }
 
 /**
- * Ends every session an account holds, named by the address that just completed a password reset (E15-S10).
+ * Ends every session an account holds, named by the address that just completed a password reset.
  *
  * The public reset flow is the fourth credential write on this platform and was the last one that revoked
- * nothing: E15-S05 covered the three authenticated ones, and this service was never in that story's landing
+ * nothing: the revoke reached the three authenticated ones first, and this service was not in that landing
  * order. Until this existed, somebody who reset their password because they believed another person was
  * inside their account changed the lock and left every stolen session open — the whole scenario the reset
  * form exists for.
@@ -63,10 +63,11 @@ interface IAccountId {
  * write, so a caller without a valid hash never reaches this function at all. There is no race in waiting —
  * `session.withTransaction` settles only after the commit.
  *
- * ⚠️ **`revokeAllSessionsForAccount` is the whole revoke.** No `deleteSession`, no `ctx`. E15-S05's helper
- * additionally deletes the caller's own access key because an authenticated caller *presents* a bearer
- * token; this caller presents none — the reset form is reachable with no session at all. Since R54 the
- * routine retires both halves of every session it names, so there is nothing left for a second call to do.
+ * ⚠️ **`revokeAllSessionsForAccount` is the whole revoke.** No `deleteSession`, no `ctx`. The authenticated
+ * services' helper additionally deletes the caller's own access key because an authenticated caller
+ * *presents* a bearer token; this caller presents none — the reset form is reachable with no session at
+ * all. Since R54 the routine retires both halves of every session it names, so there is nothing left for a
+ * second call to do.
  *
  * ⚠️ **A parked shop owner reaches this code, and that is correct.** `waitApprov` is deliberately absent
  * from `RESET_PWD_PATHS`, so an owner awaiting approval can complete a reset; ending the sessions they held

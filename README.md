@@ -26,8 +26,8 @@ sessions, and this service only serves what needs no session at all.
 | `userResetPwd`, `userUpdatePwd` | the customer reset flow's two halves |
 | `publicMutNoArgs`, `publicMutArgs` | liveness probes |
 
-⚠️ **A completed reset ends every session the account holds** (E15-S10). `updatePwd` and `userUpdatePwd`
-both call `revokeAllSessionsForAccount` once the write has committed, so somebody resetting their password
+⚠️ **A completed reset ends every session the account holds**. `updatePwd` and `userUpdatePwd` both
+call `revokeAllSessionsForAccount` once the write has committed, so somebody resetting their password
 because they believe another person is inside the account actually closes that person out. The address is
 looked up here, by `login.email`, because koa-utils' delegate answers a bare boolean and never names the
 account it wrote to. A revoke that fails answers 500: the password is live, the hash is spent, and the

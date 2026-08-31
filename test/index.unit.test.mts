@@ -7,6 +7,7 @@ const MongoDBConnect = vi.fn()
 const RedisConnect = vi.fn()
 const disconnectAllDatabases = vi.fn()
 const setupFieldEncryption = vi.fn()
+const hGetAll = vi.fn()
 // Captured constructor/factory arguments for the two real, unmocked config objects createServer()
 // builds (koa-bodyparser's options, ApolloServer's options). Both wrappers delegate to the real
 // implementation — body parsing and the Apollo instance still behave exactly as in production —
@@ -34,7 +35,10 @@ vi.mock('@as-integrations/koa', () => ({
 // are enough because the unit project never really connects — http.Server.prototype.listen is
 // stubbed too, below, so the success path can run without opening a socket.
 vi.mock('@axiumine/koa-utils/dataSources/MongoDB', () => ({ MongoDBConnect }))
-vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ RedisConnect, redisClient: {} }))
+// hGetAll on top of the bare stub: start() now reads one key off the client at boot — the keygrip
+// record, to prove REDIS_KEY names the namespace this platform was seeded into (ADR-034). It is the
+// only verb that probe uses.
+vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ RedisConnect, redisClient: { hGetAll } }))
 vi.mock('@lib/db/disconnectAllDatabases.mjs', () => ({ disconnectAllDatabases }))
 // Mocked, not stubbed with a real key: setupFieldEncryption() opens a ClientEncryption against the
 // live connection mongoose holds, and the unit project has none. What matters here is that start()
@@ -120,8 +124,10 @@ describe('checkRequiredEnv', () => {
 		])
 	})
 
+	// ⚠️ `REDIS_URL` is set here and is deliberately NOT in the list: it is required only when
+	// `REDIS_IS_CLUSTER` is not `'1'`, which is the branch a stub environment of `'x'` everywhere lands on.
 	it('passes when every required variable is set', () => {
-		const env = Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x']))
+		const env = { ...Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x'])), REDIS_URL: 'redis://127.0.0.1:6379' }
 		expect(() => checkRequiredEnv(env)).not.toThrow()
 	})
 
@@ -143,6 +149,39 @@ describe('checkRequiredEnv', () => {
 	it('requires the two field-encryption variables by name', () => {
 		expect(REQUIRED_ENV_VARS).toContain('CSFLE_MASTER_KEY_PATH')
 		expect(REQUIRED_ENV_VARS).toContain('CSFLE_KEY_VAULT_NAMESPACE')
+	})
+
+	/*
+	 * ⚠️ **The single-node branch — the one `SETUP.md` puts a fresh machine on.** `REDIS_URL` is not in
+	 * `REQUIRED_ENV_VARS` and must not be: the committed `env` ships it empty because this stack runs the
+	 * cluster branch, where nothing reads it. So the guard is a branch of its own and gets its own tests.
+	 * Unset, it is an error nowhere else — node-redis defaults the url to `redis://localhost:6379` and the
+	 * service connects to whatever answers there, which is the wrong-but-populated environment
+	 * `RISK_REGISTER` R04 describes.
+	 */
+	it('requires REDIS_URL when REDIS_IS_CLUSTER is not "1"', () => {
+		const env = Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x']))
+		env.REDIS_IS_CLUSTER = '0'
+
+		expect(() => checkRequiredEnv(env)).toThrow('Missing required environment variable: REDIS_URL')
+	})
+
+	it('accepts the single-node branch once REDIS_URL names a server', () => {
+		const env = Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x']))
+		env.REDIS_IS_CLUSTER = '0'
+		env.REDIS_URL = 'redis://127.0.0.1:6379'
+
+		expect(() => checkRequiredEnv(env)).not.toThrow()
+	})
+
+	// ⚠️ The cluster branch builds its client from REDIS_DB1..DB3 and never reads REDIS_URL, so demanding it
+	// here would refuse the boot of every machine this workspace ships configured. `'1'` exactly, as a
+	// string: that is the comparison koa-utils makes, and `1` or `'true'` takes the single-node branch.
+	it('does not require REDIS_URL on the cluster branch', () => {
+		const env = Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, 'x']))
+		env.REDIS_IS_CLUSTER = '1'
+
+		expect(() => checkRequiredEnv(env)).not.toThrow()
 	})
 })
 
@@ -349,7 +388,13 @@ describe('start (failure path)', () => {
 		MongoDBConnect.mockReset().mockResolvedValue(undefined)
 		RedisConnect.mockReset().mockResolvedValue(undefined)
 		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
+		// A seeded namespace, so every test here is about the failure it arms rather than about the
+		// keygrip probe start() now runs first. Only `wrapped` is read — presence, never the value.
+		hGetAll.mockReset().mockResolvedValue({ wrapped: 'seeded' })
+		// ⚠️ `REDIS_URL` is stubbed on top of the list because it is not in it: the guard requires it only
+		// when `REDIS_IS_CLUSTER` is not `'1'`, and an environment stubbed `'x'` everywhere is that branch.
 		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, 'x')
+		vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
 		errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	})
 	afterEach(() => {
@@ -379,6 +424,29 @@ describe('start (failure path)', () => {
 		expect(captureException).toHaveBeenCalledWith(error)
 		expect(disconnectAllDatabases).toHaveBeenCalledWith(1)
 		expect(errorLog).toHaveBeenCalledExactlyOnceWith('error', error)
+	})
+
+	/*
+	 * ⚠️ **A connection that opened is not a namespace that exists.** `REDIS_KEY` is a prefix, so a value
+	 * naming a namespace nobody seeded connects, answers and stays empty — and this tier authenticates
+	 * nobody, so nothing here would ever have noticed: confirmation links would report themselves expired
+	 * because the pending registration was written somewhere else, every rate-limit counter would restart
+	 * from zero, and `updatePwd` would leave the account's live sessions standing. That last one is why
+	 * the probe belongs on a public service at all. `RISK_REGISTER` R04's local half.
+	 */
+	it('reports to Sentry and disconnects with code 1 when the keygrip record is not in this namespace', async () => {
+		hGetAll.mockResolvedValueOnce({})
+
+		await start()
+
+		expect(hGetAll).toHaveBeenCalledExactlyOnceWith('xkeygrip')
+		expect(captureException).toHaveBeenCalledWith(
+			expect.objectContaining({ message: expect.stringContaining('KEYGRIP_RECORD_MISSING') })
+		)
+		expect(disconnectAllDatabases).toHaveBeenCalledWith(1)
+		// Before field encryption: nothing that touches data runs on a connection whose namespace the
+		// service could not find.
+		expect(setupFieldEncryption).not.toHaveBeenCalled()
 	})
 
 	// A service that came up with field encryption broken would answer queries with ciphertext and
@@ -416,7 +484,9 @@ describe('start (success path — the listen() call)', () => {
 		MongoDBConnect.mockReset().mockResolvedValue(undefined)
 		RedisConnect.mockReset().mockResolvedValue(undefined)
 		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
+		hGetAll.mockReset().mockResolvedValue({ wrapped: 'seeded' })
 		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, 'x')
+		vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
 		vi.stubEnv('PORT', '4027')
 		infoLog = vi.spyOn(console, 'info').mockImplementation(() => undefined)
 		// Never actually binds a socket: the callback is invoked synchronously, exactly like a real
@@ -446,6 +516,16 @@ describe('start (success path — the listen() call)', () => {
 		expect(listenSpy).toHaveBeenCalledExactlyOnceWith({ port: '4027' }, expect.any(Function))
 	})
 
+	// The exact key, because the whole point of the probe is which namespace it looked in, and before
+	// field encryption because it is the first question asked of a connection that just opened.
+	// `REDIS_KEY` is the 'x' stub here, so the key it reads is `xkeygrip`.
+	it('reads the keygrip record at <REDIS_KEY>keygrip, before anything else uses the connection', async () => {
+		srv = await start()
+
+		expect(hGetAll).toHaveBeenCalledExactlyOnceWith('xkeygrip')
+		expect(hGetAll.mock.invocationCallOrder[0]).toBeLessThan(setupFieldEncryption.mock.invocationCallOrder[0])
+	})
+
 	// Once, with no arguments: it reads its configuration from the environment, and a caller that
 	// passed it anything would be building a second source of truth for the master key path.
 	it('sets field encryption up exactly once, before the server is built', async () => {
@@ -466,6 +546,7 @@ describe('start (success path — the listen() call)', () => {
 describe('app.proxy', () => {
 	it('is off on the constructed Koa app', async () => {
 		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, 'x')
+		vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
 
 		const { app, apolloServer } = await createServer()
 

@@ -117,6 +117,32 @@ UPLOAD_DIR=/media/xxx
 #   Left unset the customer link falls back to APP_DOMAIN — a working link on the wrong domain, which
 #   is the failure mode to prefer over a broken one. Needs koa-utils ≥ 5.8.0, which added the
 #   per-call linkBase/linkPath arguments; before it, one process could only ever send one domain.
+#
+# ⚠️ **Rotating SOCKETLABS_SERVER_APIKEY — the whole procedure, because nothing automates it.**
+# RISK_REGISTER R23. The key is a bearer credential: whoever holds it sends mail as this platform, and
+# every verify-email and password-reset link this stack has ever issued went out under it. It carries no
+# expiry, no scope and no second factor, so a leaked key stays valid until somebody revokes it.
+#
+#   1. Issue a new Server API key in the SocketLabs dashboard, for the same Server ID.
+#   2. Replace the value in THIS service's gitignored environment file — the file this template is
+#      copied to — and nowhere else. This is the only service that sends mail, and the other eight say
+#      so in their own templates. There is no cluster-wide swap and no second process to keep in step,
+#      which is what makes this rotation cheap.
+#   3. Restart the process. `SocketLabsLib`'s constructor reads `process.env.SOCKETLABS_SERVER_APIKEY`
+#      fresh on every instantiation rather than caching it at module load, so a restart is enough and
+#      there is no cache to flush; the running process is the only thing still holding the old value.
+#   4. Revoke the old key in the dashboard — after the restart, not before. Both keys are live in
+#      between, which is what makes this a zero-downtime swap.
+#
+# ⚠️ **`checkRequiredEnv()` in `src/index.mts` asserts this variable is non-empty and nothing more.**
+# A revoked-but-present key passes every boot check on this platform and fails on the first real send.
+# Nothing here can tell a live key from a dead one, deliberately — see the unshaped-credential comment
+# in `src/index.mts`: a credential has no format.
+#
+# ⚠️ **No rotation cadence is written down anywhere, and this block does not invent one.** Whether a
+# calendar rotation is required on top of rotate-on-suspicion is a platform-owner decision — RISK_REGISTER
+# R23, and `docs/devprotocol/phase3/SECURITY_AUTH.md` §9 open question 7, which asks it for this key, for
+# `QODANA_TOKEN` and for the Keygrip pairs together.
 SOCKETLABS_SERVER_ID=111111
 SOCKETLABS_SERVER_APIKEY=xxxxxx
 APP_DOMAIN=https://xxxx.tdweb.lan

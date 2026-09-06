@@ -1,0 +1,6 @@
+import { ItemCategory } from '../models/itemCategory.mjs'
+
+/** Categories have no published flag, so no filter is owed and none is asserted. */
+export async function itemCategories() {
+	return await ItemCategory.find({})
+}

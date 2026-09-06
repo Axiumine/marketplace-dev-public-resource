@@ -1,0 +1,7 @@
+import { livePublic } from '../lib/catalogue/publicRead.mjs'
+import { Company } from '../models/company.mjs'
+
+/** The same resolver, composed the way every real one is. */
+export async function companyBySlug(slug: string) {
+	return await Company.findOne({ slug, ...livePublic() })
+}

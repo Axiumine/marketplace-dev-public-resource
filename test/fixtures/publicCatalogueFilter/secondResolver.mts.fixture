@@ -1,0 +1,13 @@
+import { livePublic } from '../lib/catalogue/publicRead.mjs'
+import { Item } from '../models/item.mjs'
+
+/** The resolver that was already there, composed correctly. */
+export async function items(companyId: string) {
+	return await Item.find({ idCompany: companyId, ...livePublic() })
+}
+
+/** The one pasted in next to it. The file names the filter; this function does not. */
+export async function itemsAgain(companyId: string) {
+	// pasted from above, minus the one thing that mattered
+	return await Item.find({ idCompany: companyId })
+}

@@ -1,0 +1,5 @@
+import { livePublic } from '../lib/catalogue/publicRead.mjs'
+import { Item } from '../models/item.mjs'
+
+/* Module scope. The file names the filter; no function encloses the read, so nothing vouches for it. */
+export const everyItem = Item.find(livePublic())

@@ -1,0 +1,9 @@
+import { Company } from '../models/company.mjs'
+
+/**
+ * The shape R18 exists for: a copy-pasted resolver whose filter never made the journey.
+ */
+export async function companyBySlug(slug: string) {
+	// no livePublic(), no LIVE_PUBLIC_PIPELINE — drafts and deleted rows answer too
+	return await Company.findOne({ slug })
+}

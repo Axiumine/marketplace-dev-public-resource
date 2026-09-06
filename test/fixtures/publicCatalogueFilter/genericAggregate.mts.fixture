@@ -1,0 +1,9 @@
+import { Company } from '../models/company.mjs'
+
+interface IPin {
+	_id: string
+}
+
+export async function companiesNearby() {
+	return await Company.aggregate<IPin>([{ $match: {} }])
+}

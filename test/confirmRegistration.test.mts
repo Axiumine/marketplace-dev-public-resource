@@ -111,6 +111,18 @@ const closedHolder = {
 }
 
 /**
+ * A closed account that nonetheless carries *this* registration's own credential — the restore this very
+ * confirmation wrote landed, but the account was closed again (an admin, a second closure, whatever the
+ * cause) before the recovery read runs. `isOurs` must still say no: a closed account is not a usable one,
+ * and the `deleted` check is what tells this apart from `ourHolder` on the credential alone.
+ */
+const closedHolderWithOurCredential = {
+	_id: CLOSED_ID,
+	deleted: new Date('2026-08-20T09:00:00.000Z'),
+	login: { password: HASHED }
+}
+
+/**
  * Every lookup chain handed out this run, in call order. `openAccount` reads the address twice on the
  * paths that fail — once in the transaction and once after it aborts — and which session each read
  * carried is the difference between a recovery that works and one that reads the aborted transaction's
@@ -602,6 +614,20 @@ describe('confirmRegistration — a replayed click', () => {
 		addressHeldBy(null, closedHolder)
 
 		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('write conflict')
+	})
+
+	// ⚠️ The credential alone is not enough: a closed account that happens to carry this registration's own
+	// hash — the restore it wrote landed, then the account was closed again before this read — is still not
+	// a usable account. Reporting success here would consume the key and tell the person they are in, over
+	// an account that refuses them at the login gate.
+	it('rethrows when the recovered account is closed, even carrying this registration’s own credential', async () => {
+		insertMany.mockRejectedValueOnce(new Error('write conflict'))
+		addressHeldBy(null, closedHolderWithOurCredential)
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('write conflict')
+
+		expect(registrationMailer.sendWelcome).not.toHaveBeenCalled()
+		expect(deletePendingRegistration).not.toHaveBeenCalled()
 	})
 
 	it('recovers from a failure that is not a duplicate key at all', async () => {

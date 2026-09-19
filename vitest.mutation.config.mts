@@ -32,6 +32,9 @@ export default defineConfig({
 	test: {
 		include: ['test/*.test.mts'],
 		server: { deps: { inline: inlineDeps } },
+		// vitest.testNames.mts caps how long a test's full name may be — the mutation gate
+		// selects tests by name, and past a size it cannot; see the file.
+		setupFiles: ['./vitest.testNames.mts'],
 		// The `unit` project in vitest.config.mts sets no explicit testTimeout (vitest's 5s
 		// default). Stryker's instrumented mutants run slower than the original code, so the
 		// same 5s can spuriously time out a still-correct test under an inert mutant — that

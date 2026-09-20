@@ -191,7 +191,10 @@ describe('readPendingRegistration', () => {
 		expect(read?.email).toBeInstanceOf(Binary)
 		expect(read?.email.sub_type).toBe(Binary.SUBTYPE_ENCRYPTED)
 		expect(read?.email.sub_type).toBe(6)
-		expect(read?.email.buffer.equals(CIPHERTEXT.buffer)).toBe(true)
+		// `Binary#buffer` types as the plain `Uint8Array` bson declares it, not the Node `Buffer` it
+		// actually is — `.equals` is a `Buffer`-only method the type doesn't carry. `toEqual` compares
+		// typed arrays byte for byte, which is the same check.
+		expect(read?.email.buffer).toEqual(CIPHERTEXT.buffer)
 	})
 
 	// `HGETALL` answers `{}` for a key that does not exist rather than a nil, so the absence has to be

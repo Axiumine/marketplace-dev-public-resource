@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import type { AddressInfo } from 'node:net'
 
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { decryptDocument } from '@axiumine/marketplace-common/encryption/decryptDocument'
@@ -70,7 +69,7 @@ vi.mock('../../src/lib/access/sendShopOwnerVerifyEmail.mts', async (importOrigin
 	sendShopOwnerVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'shopOwner', email, hash })
 }))
 
-import { ENDPOINT, start } from '../../src/index.mts'
+import { ENDPOINT } from '../../src/index.mts'
 import { SHOP_OWNER_VERIFY_LINK_PATH } from '../../src/lib/access/sendShopOwnerVerifyEmail.mts'
 import { USER_VERIFY_LINK_PATH } from '../../src/lib/access/sendUserVerifyEmail.mts'
 import {
@@ -82,6 +81,7 @@ import {
 } from '../../src/lib/registration/pendingRegistration.mts'
 import { REGISTRATION_TARGET_SHOP_OWNER, REGISTRATION_TARGET_USER } from '../../src/lib/registration/registrationTargets.mts'
 import { submitShopOwnerRegistration, submitUserRegistration } from '../../src/lib/registration/submitRegistration.mts'
+import { bootHttpServer } from './bootHttpServer.mts'
 
 const REDIS_KEY = process.env.REDIS_KEY as string
 
@@ -208,12 +208,7 @@ function shopOwnerByIdEncrypted(_id: mongoose.Types.ObjectId) {
 }
 
 beforeAll(async () => {
-	const server = await start()
-	if (!server) throw new Error('server failed to start against the real Redis cluster / MongoDB')
-	httpServer = server.httpServer
-	const address = httpServer.address() as AddressInfo | null
-	if (!address || typeof address === 'string') throw new Error('no TCP address on the booted server')
-	base = `http://127.0.0.1:${address.port}`
+	;({ httpServer, base } = await bootHttpServer())
 })
 
 /**

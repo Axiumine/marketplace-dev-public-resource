@@ -14,7 +14,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // unit test has. What is pinned here is which list and which key it is handed, and that the ciphertext
 // it produces for `login.email` is what comes back — the encryption itself is marketplace-common's and
 // is tested there.
-const encryptDocument = vi.fn(async (document: { login: { email: unknown } }) => ({
+// `fields`/`keyAltName` are real arguments of the function being mocked, asserted on below by
+// `toHaveBeenCalledExactlyOnceWith` — but the implementation itself only needs `document`, so they are
+// typed through the named type rather than declared as unused parameters, which this config's
+// `no-unused-vars` (no underscore exception) would otherwise flag.
+type EncryptDocument = (
+	document: { login: { email: unknown } },
+	fields: unknown,
+	keyAltName: string
+) => Promise<{ login: { email: Binary }; __plaintext: unknown }>
+
+const encryptDocument = vi.fn<EncryptDocument>(async (document) => ({
 	login: { email: new Binary(Buffer.from('beef', 'hex'), Binary.SUBTYPE_ENCRYPTED) },
 	__plaintext: document.login.email
 }))
@@ -135,7 +145,9 @@ describe('encryptLoginEmail', () => {
 
 		expect(email).toBeInstanceOf(Binary)
 		expect(email.sub_type).toBe(Binary.SUBTYPE_ENCRYPTED)
-		expect(email.buffer.toString('hex')).toBe('beef')
+		// `Binary#buffer` types as the plain `Uint8Array` bson declares it, not the Node `Buffer` it
+		// actually is — `Buffer.from` views it without copying, so `.toString('hex')` is available.
+		expect(Buffer.from(email.buffer).toString('hex')).toBe('beef')
 	})
 
 	// ⚠️ **The guard is not defensive noise.** If `login.email` ever left the encrypted lists every other

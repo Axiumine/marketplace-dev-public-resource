@@ -1,6 +1,3 @@
-import { trusted, Types } from 'mongoose'
-import { describe, expect, it } from 'vitest'
-
 import {
 	assertObjectId,
 	assertOffset,
@@ -11,7 +8,9 @@ import {
 	livePublic,
 	MAX_LIMIT,
 	MAX_OFFSET
-} from '../src/lib/catalogue/publicRead.mts'
+} from '@lib/catalogue/publicRead.mjs'
+import { trusted, Types } from 'mongoose'
+import { describe, expect, it } from 'vitest'
 
 // `trusted()` marks its argument with a private, non-registered Symbol, so the tag cannot be written
 // by hand — it is read off a sample instead. Asserting the tag itself rather than only the object's
@@ -20,6 +19,9 @@ import {
 // every caller as an empty catalogue rather than as an error.
 const TRUSTED = Object.getOwnPropertySymbols(trusted({}))[0]
 
+/** `deleted` is typed as `{ $exists: boolean }`; read the tag through the wider shape it actually has. */
+const isTrusted = (deleted: Record<string | symbol, unknown>): unknown => deleted[TRUSTED]
+
 describe('livePublic', () => {
 	it('is the published-and-not-deleted pair, with the deleted clause trusted', () => {
 		const filter = livePublic()
@@ -27,7 +29,7 @@ describe('livePublic', () => {
 		expect(filter).toEqual({ published: true, deleted: trusted({ $exists: false }) })
 		expect(Object.keys(filter)).toEqual(['published', 'deleted'])
 		expect(filter.published).toBe(true)
-		expect(filter.deleted[TRUSTED]).toBe(true)
+		expect(isTrusted(filter.deleted)).toBe(true)
 	})
 
 	// ⚠️ The reason it is a function. `trusted()` tags the object it is handed, so one shared instance
@@ -39,7 +41,7 @@ describe('livePublic', () => {
 
 		expect(second).not.toBe(first)
 		expect(second.deleted).not.toBe(first.deleted)
-		expect(second.deleted[TRUSTED]).toBe(true)
+		expect(isTrusted(second.deleted)).toBe(true)
 	})
 })
 

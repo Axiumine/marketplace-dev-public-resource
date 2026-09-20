@@ -46,7 +46,7 @@ vi.mock('@lib/db/disconnectAllDatabases.mjs', () => ({ disconnectAllDatabases })
 // awaits it, in the right order, and dies if it rejects — all three are asserted below.
 vi.mock('@axiumine/marketplace-common/encryption/setupFieldEncryption', () => ({ setupFieldEncryption }))
 vi.mock('koa-bodyparser', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('koa-bodyparser')>()
+	const actual = await importOriginal<{ default: typeof import('koa-bodyparser') }>()
 	return {
 		// koa-bodyparser mutates its `opts` argument in place (sets detectJSON/onerror/
 		// returnRawBody directly on the object it was given), so the options object must be
@@ -158,6 +158,26 @@ const MISSHAPEN: Readonly<Record<EnvShape, string>> = {
 
 const shaped = (name: string): string => SHAPED[EXPECTED_SHAPES[name]] ?? 'x'
 const validEnv = (): Record<string, string> => Object.fromEntries(REQUIRED_ENV_VARS.map((k) => [k, shaped(k)]))
+
+/**
+ * Both `start()` describe blocks below reset the same four infrastructure mocks and stub the same
+ * env, because both drive `start()` from the same env-checked, Redis-then-Mongo entry point — one
+ * up to the point it throws, the other all the way through. Shared rather than repeated, so a new
+ * datasource `start()` gates on cannot be added to one block's reset and quietly left out of the
+ * other's.
+ */
+const resetStartMocks = (): void => {
+	MongoDBConnect.mockReset().mockResolvedValue(undefined)
+	RedisConnect.mockReset().mockResolvedValue(undefined)
+	setupFieldEncryption.mockReset().mockResolvedValue(undefined)
+	// A seeded namespace, so every test here is about the failure it arms rather than about the
+	// keygrip probe start() now runs first. Only `wrapped` is read — presence, never the value.
+	hGetAll.mockReset().mockResolvedValue({ wrapped: 'seeded' })
+	// ⚠️ `REDIS_URL` is stubbed on top of the list because it is not in it: the guard requires it only
+	// when `REDIS_IS_CLUSTER` is not `'1'`, and `validEnv()`'s `'0'` is that branch.
+	for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, shaped(k))
+	vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
+}
 
 describe('checkRequiredEnv', () => {
 	/*
@@ -293,7 +313,7 @@ describe('checkRequiredEnv', () => {
 	 * a variable they have not written yet goes looking for a line that is not in the file.
 	 */
 	it('reports a missing variable before a misshapen one', () => {
-		const env = { ...validEnv(), REDIS_URL: SHAPED.redisUrl, PORT: MISSHAPEN.port }
+		const env: Record<string, string> = { ...validEnv(), REDIS_URL: SHAPED.redisUrl, PORT: MISSHAPEN.port }
 		delete env.MONGODB_URI
 
 		expect(() => checkRequiredEnv(env)).toThrow('Missing required environment variable: MONGODB_URI')
@@ -500,16 +520,7 @@ describe('start (failure path)', () => {
 	beforeEach(() => {
 		captureException.mockReset()
 		disconnectAllDatabases.mockReset()
-		MongoDBConnect.mockReset().mockResolvedValue(undefined)
-		RedisConnect.mockReset().mockResolvedValue(undefined)
-		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
-		// A seeded namespace, so every test here is about the failure it arms rather than about the
-		// keygrip probe start() now runs first. Only `wrapped` is read — presence, never the value.
-		hGetAll.mockReset().mockResolvedValue({ wrapped: 'seeded' })
-		// ⚠️ `REDIS_URL` is stubbed on top of the list because it is not in it: the guard requires it only
-		// when `REDIS_IS_CLUSTER` is not `'1'`, and `validEnv()`'s `'0'` is that branch.
-		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, shaped(k))
-		vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
+		resetStartMocks()
 		errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	})
 	afterEach(() => {
@@ -596,12 +607,7 @@ describe('start (success path — the listen() call)', () => {
 	let srv: Awaited<ReturnType<typeof start>>
 
 	beforeEach(() => {
-		MongoDBConnect.mockReset().mockResolvedValue(undefined)
-		RedisConnect.mockReset().mockResolvedValue(undefined)
-		setupFieldEncryption.mockReset().mockResolvedValue(undefined)
-		hGetAll.mockReset().mockResolvedValue({ wrapped: 'seeded' })
-		for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, shaped(k))
-		vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
+		resetStartMocks()
 		vi.stubEnv('PORT', '4027')
 		infoLog = vi.spyOn(console, 'info').mockImplementation(() => undefined)
 		// Never actually binds a socket: the callback is invoked synchronously, exactly like a real

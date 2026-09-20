@@ -1,13 +1,18 @@
 import { GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Types } from 'mongoose'
+import { PipelineStage, Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chain, expectTombstoneFilter, live, TRUSTED } from './support/queryChain.mts'
 
 const companyFind = vi.fn()
 const companyFindOne = vi.fn()
-const companyCountDocuments = vi.fn(async () => 0)
-const companyAggregate = vi.fn(async () => [])
+// `Model.countDocuments(filter, { limit })` — every caller below passes both arguments. The real
+// parameter list is an explicit type argument rather than named-but-unused params, which would trip
+// `no-unused-vars` under this config's no-underscore-exception setup.
+const companyCountDocuments = vi.fn<(filter: Record<string, unknown>, options?: { limit: number }) => Promise<number>>(
+	async () => 0
+)
+const companyAggregate = vi.fn<(pipeline: PipelineStage[]) => Promise<unknown[]>>(async () => [])
 const itemCategoryFind = vi.fn()
 
 vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({
@@ -243,6 +248,9 @@ describe('companiesNearby', () => {
 		// interpretation, and the query answers with the wrong shops rather than with an error.
 		it('geo-sorts from the point, in metres, over live shops only', async () => {
 			const { pipeline } = await resolveNear()
+			// `PipelineStage` is a union of every stage shape; the first stage is asserted to be this
+			// one before its `$geoNear` is read off it.
+			const geoNearStage = pipeline[0] as PipelineStage.GeoNear
 
 			expect(pipeline[0]).toEqual({
 				$geoNear: {
@@ -254,7 +262,7 @@ describe('companiesNearby', () => {
 					query: { published: true, deleted: { $exists: false } }
 				}
 			})
-			expect(Object.getOwnPropertySymbols(pipeline[0].$geoNear.query.deleted)).toHaveLength(0)
+			expect(Object.getOwnPropertySymbols((geoNearStage.$geoNear.query as { deleted: object }).deleted)).toHaveLength(0)
 		})
 
 		// `key` is named explicitly because `$geoNear` otherwise infers the field from the available
@@ -263,7 +271,7 @@ describe('companiesNearby', () => {
 		it('names the indexed field rather than letting the server infer it', async () => {
 			const { pipeline } = await resolveNear()
 
-			expect(pipeline[0].$geoNear.key).toBe('address.position')
+			expect((pipeline[0] as PipelineStage.GeoNear).$geoNear.key).toBe('address.position')
 		})
 
 		it('projects the pin shape, distance included', async () => {

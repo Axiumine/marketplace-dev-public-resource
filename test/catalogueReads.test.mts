@@ -65,9 +65,9 @@ describe('liveItemsAcrossShops', () => {
 	})
 
 	const runPipeline = async (
-		match = { idCategory: idCompany },
-		companyMatch = {},
-		sort = { _id: 1 as const },
+		match: Record<string, unknown> = { idCategory: idCompany },
+		companyMatch: Record<string, unknown> = {},
+		sort: PipelineStage.Sort['$sort'] = { _id: 1 as const },
 		skip = 0,
 		limit = 24
 	) => {

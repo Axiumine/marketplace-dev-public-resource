@@ -29,7 +29,12 @@ const EMAIL = 'customer@marketplace.test'
 /** A model that answers `result` from `findOne(...).lean()`, and the two spies behind it. */
 const modelYielding = (result: unknown) => {
 	const lean = vi.fn().mockResolvedValue(result)
-	const findOne = vi.fn(() => ({ lean }))
+	// The explicit type argument, not a named-but-unused parameter, gives `.mock.calls` its real shape:
+	// `find(filter, projection)` is a real two-argument call, and naming both params just to ignore them
+	// trips `no-unused-vars`, which this config runs with no underscore exception.
+	const findOne = vi.fn<(filter: Record<string, unknown>, projection: string) => { lean: typeof lean }>(() => ({
+		lean
+	}))
 
 	// No `session` method on purpose: the transaction ended when the delegate returned, so a production
 	// path that reached for one would fail here rather than silently join a session that is over.

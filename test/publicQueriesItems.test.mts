@@ -1,18 +1,35 @@
 import { GraphQLID, GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql'
-import { Types } from 'mongoose'
+import { PipelineStage, Types } from 'mongoose'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chain, expectTombstoneFilter, live, TRUSTED } from './support/queryChain.mts'
 
+// Every mock below takes its real parameter list as an explicit type argument rather than as named
+// params: naming them just to leave them unused trips `no-unused-vars`, which this config runs with
+// no underscore exception, and the type argument is what actually narrows `.mock.calls`' tuple shape.
+
+/** `Model.countDocuments(filter, { limit })` — every caller below passes both arguments. */
+const countDocuments = () =>
+	vi.fn<(filter: Record<string, unknown>, options?: { limit: number }) => Promise<number>>(async () => 0)
+
 const companyFind = vi.fn()
-const companyCountDocuments = vi.fn(async () => 0)
+const companyCountDocuments = countDocuments()
 const itemFind = vi.fn()
 const itemFindOne = vi.fn()
-const itemCountDocuments = vi.fn(async () => 0)
-const itemAggregate = vi.fn(async () => [])
+const itemCountDocuments = countDocuments()
+const itemAggregate = vi.fn<(pipeline: PipelineStage[]) => Promise<unknown[]>>(async () => [])
 const itemCategoryFind = vi.fn()
 const liveCompanyBySlug = vi.fn()
-const liveItemsAcrossShops = vi.fn(async () => [] as unknown[])
+
+type LiveItemsAcrossShops = (
+	match: Record<string, unknown>,
+	companyMatch: Record<string, unknown>,
+	sort: PipelineStage.Sort['$sort'],
+	skip: number,
+	limit: number
+) => Promise<unknown[]>
+
+const liveItemsAcrossShops = vi.fn<LiveItemsAcrossShops>(async () => [])
 
 vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({
 	Company: { find: companyFind, countDocuments: companyCountDocuments }
@@ -38,6 +55,9 @@ const idCategory = new Types.ObjectId('507f191e810c19729de860ea')
 const company = { _id: idCompany, slug: 'mark-boutique', publicName: 'Mark Boutique' }
 
 const item = (n: number) => ({ _id: new Types.ObjectId(), idCategory, name: `Item ${n}`, description: 'x', slug: `item-${n}` })
+
+/** A clause `trusted()` tagged, read back through the wider shape it actually has. */
+type Tagged<T> = T & Record<string | symbol, unknown>
 
 let GraphQLSitemapKind: (typeof import('../src/graphQLPublic/schema/types/GraphQLSitemapEntry.mts'))['GraphQLSitemapKind']
 let items: (typeof import('../src/graphQLPublic/schema/queries/items.mts'))['items']
@@ -479,7 +499,9 @@ describe('searchItems', () => {
 	it('hands the join a plain text match and a plain geo bound', async () => {
 		await resolveSearch({ q: '  sneaker  ', near: { ...MILAN, radiusMeters: 5_000 } })
 
-		const companyMatch = liveItemsAcrossShops.mock.calls[0][1]
+		const companyMatch = liveItemsAcrossShops.mock.calls[0][1] as {
+			'address.position': { $geoWithin: { $centerSphere: [[number, number], number] } }
+		}
 
 		expect(liveItemsAcrossShops.mock.calls[0][0]).toEqual({ $text: { $search: 'sneaker' } })
 		expect(Object.getOwnPropertySymbols(liveItemsAcrossShops.mock.calls[0][0].$text)).toHaveLength(0)
@@ -511,7 +533,11 @@ describe('searchItems', () => {
 
 		const result = await resolveSearch({ near: { ...MILAN, radiusMeters: 5_000 } })
 
-		const filter = itemCountDocuments.mock.calls[0][0]
+		const filter = itemCountDocuments.mock.calls[0][0] as {
+			$text: Tagged<{ $search: string }>
+			published: boolean
+			deleted: Tagged<{ $exists: boolean }>
+		}
 
 		// The radius is deliberately absent here: it lives on `company`, and this count cannot join.
 		// That absence is half of why the total is never reported exact.
@@ -658,11 +684,16 @@ describe('sitemapEntries', () => {
 
 			const page = await sitemapEntries.resolve(null, { kind: 'ITEM', limit: 2 })
 			const pipeline = itemAggregate.mock.calls[0][0]
+			// `PipelineStage` is a union of every stage shape; each stage read below is asserted to be
+			// this one specific shape before the field that names it is read off, the same way the join
+			// stage is elsewhere.
+			const facetStage = pipeline[3] as PipelineStage.Facet
+			const lookupStage = facetStage.$facet.docs[0] as PipelineStage.Lookup
 
 			expect(pipeline[0]).toEqual({ $match: LIVE_PLAIN })
 			expect(pipeline[1]).toEqual({ $sort: { _id: 1 } })
 			expect(pipeline[2]).toEqual({ $limit: 2 })
-			expect(pipeline[3].$facet.docs[0].$lookup).toMatchObject({
+			expect(lookupStage.$lookup).toMatchObject({
 				from: 'company',
 				localField: 'idCompany',
 				foreignField: '_id',
@@ -670,13 +701,13 @@ describe('sitemapEntries', () => {
 				pipeline: [{ $match: LIVE_PLAIN }, { $project: { slug: 1 } }]
 			})
 			// No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
-			expect(pipeline[3].$facet.docs[1]).toEqual({ $unwind: '$company' })
+			expect(facetStage.$facet.docs[1]).toEqual({ $unwind: '$company' })
 			// `_id: 0` because the cursor comes from the `tail` branch and a projected `_id` would only
 			// travel back over the wire; `companySlug` is lifted out of the joined document because the
 			// path needs both slugs and nothing downstream should have to know a `$lookup` happened.
-			expect(pipeline[3].$facet.docs[2]).toEqual({ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } })
-			expect(pipeline[3].$facet.scanned).toEqual([{ $count: 'n' }])
-			expect(pipeline[3].$facet.tail).toEqual([{ $group: { _id: null, maxId: { $max: '$_id' } } }])
+			expect(facetStage.$facet.docs[2]).toEqual({ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } })
+			expect(facetStage.$facet.scanned).toEqual([{ $count: 'n' }])
+			expect(facetStage.$facet.tail).toEqual([{ $group: { _id: null, maxId: { $max: '$_id' } } }])
 			expect(page.nodes).toEqual([{ path: '/shop/mark-boutique/item/sneaker' }])
 			expect(page.nextAfterId).toBe(maxId)
 		})
@@ -689,7 +720,7 @@ describe('sitemapEntries', () => {
 
 			await sitemapEntries.resolve(null, { kind: 'ITEM', afterId: idCompany.toHexString() })
 
-			const match = itemAggregate.mock.calls[0][0][0].$match
+			const { $match: match } = itemAggregate.mock.calls[0][0][0] as PipelineStage.Match
 
 			expect(match._id).toEqual({ $gt: idCompany })
 			expect(Object.getOwnPropertySymbols(match._id)).toHaveLength(0)

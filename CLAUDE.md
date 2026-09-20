@@ -17,6 +17,8 @@ Tier/concern split, port table, terminology, auth model live there. Not here.
 `yarn test:mutation` is **hook-only** — it runs when `pre-push` calls it and at no other time: not to
 check a change, not before a commit, not on one file, not to confirm a survivor is fixed, and never via
 `stryker` directly. Why, and how to answer a survivor: [`REPO.md`](./REPO.md).
+⚠️ Since ADR-055 the script has a second caller, `.github/workflows/gates.yml`, which runs it on
+every pull request — two callers, both automated, and a hand is neither.
 
 ## Rules
 

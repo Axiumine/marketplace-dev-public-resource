@@ -12,8 +12,16 @@ const checkEmailLen = vi.fn()
 const checkPwdLen = vi.fn()
 const endEverySessionUser = vi.fn()
 
-const boundResetPwdResolve = vi.fn(async () => 'delegated-reset')
-const boundUpdatePwdResolve = vi.fn(async () => 'delegated-update')
+// The real resolver signatures are named types rather than named-but-unused params, which this
+// config's `no-unused-vars` (no underscore exception) would flag.
+type ResetPwdResolve = (source: unknown, args: { email: string; turnstileToken: string }) => Promise<string>
+type UpdatePwdResolve = (
+	source: unknown,
+	args: { email: string; hash: string; password: string; turnstileToken: string }
+) => Promise<string>
+
+const boundResetPwdResolve = vi.fn<ResetPwdResolve>(async () => 'delegated-reset')
+const boundUpdatePwdResolve = vi.fn<UpdatePwdResolve>(async () => 'delegated-update')
 const BOUND_RESET_TYPE = new GraphQLNonNull(GraphQLBoolean)
 const BOUND_UPDATE_TYPE = new GraphQLNonNull(GraphQLBoolean)
 

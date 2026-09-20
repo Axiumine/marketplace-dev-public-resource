@@ -1,3 +1,4 @@
+import type { ICreateResetPwdFlowArgs } from '@axiumine/koa-utils/lib/access/createResetPwdFlow'
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -5,7 +6,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 // and that its two return values reach the schema under the right names.
 const boundResetPwd = { __sentinel: 'resetPwd' }
 const boundUpdatePassword = { __sentinel: 'updatePassword' }
-const createResetPwdFlow = vi.fn(() => ({ resetPwd: boundResetPwd, updatePassword: boundUpdatePassword }))
+// The real signature is the type argument rather than a named-but-unused param, which this config's
+// `no-unused-vars` (no underscore exception) would flag.
+const createResetPwdFlow = vi.fn<(args: ICreateResetPwdFlowArgs) => { resetPwd: object; updatePassword: object }>(() => ({
+	resetPwd: boundResetPwd,
+	updatePassword: boundUpdatePassword
+}))
 
 vi.mock('@axiumine/koa-utils/lib/access/createResetPwdFlow', () => ({ createResetPwdFlow }))
 

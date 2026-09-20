@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import type { AddressInfo } from 'node:net'
 
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
@@ -10,7 +9,8 @@ import mongoose from 'mongoose'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import QueriesPublic from '../../src/graphQLPublic/schema/queries.mts'
-import { ENDPOINT, start } from '../../src/index.mts'
+import { ENDPOINT } from '../../src/index.mts'
+import { bootHttpServer } from './bootHttpServer.mts'
 
 /****************************************************************************************
  * Every public read, driven against a database that holds a draft and a deleted row of each
@@ -192,12 +192,7 @@ async function seedItem(idCompany: mongoose.Types.ObjectId, slug: string, extra:
 }
 
 beforeAll(async () => {
-	const server = await start()
-	if (!server) throw new Error('server failed to start against the real Redis cluster / MongoDB')
-	httpServer = server.httpServer
-	const address = httpServer.address() as AddressInfo | null
-	if (!address || typeof address === 'string') throw new Error('no TCP address on the booted server')
-	base = `http://127.0.0.1:${address.port}`
+	;({ httpServer, base } = await bootHttpServer())
 
 	await insert('itemCategory', { _id: idCategory, name: `Liveness ${RUN}`, slug: CATEGORY_LIVE, position: 900 })
 	await insert('itemCategory', {
@@ -409,20 +404,25 @@ describe('search: the text index reaches drafts and the filter does not', () => 
 })
 
 describe('sitemapEntries: what a crawler is invited to index', () => {
+	/** One page of `sitemapEntries`, named so the loop below has something to annotate the await with. */
+	type SitemapPage = { sitemapEntries: { nodes: Array<{ path: string }>; nextAfterId: string | null } }
+
 	/** Walk every page of one kind — the listing spans the collection, this run's rows do not. */
 	async function allPaths(kind: 'COMPANY' | 'ITEM' | 'CATEGORY') {
 		const paths: string[] = []
 		let afterId: string | null = null
 
 		do {
-			const { sitemapEntries } = await data<{
-				sitemapEntries: { nodes: Array<{ path: string }>; nextAfterId: string | null }
-			}>(
+			// Destructuring straight off the `await` here sends TS into a self-referential loop over
+			// `afterId`'s own type (TS7022) — the assignment below feeds back into the call above on the
+			// next iteration. Naming the page first breaks the cycle; nothing about the query changes.
+			const page: SitemapPage = await data<SitemapPage>(
 				`query ($kind: GraphQLSitemapKind!, $afterId: ID) {
 					sitemapEntries(kind: $kind, afterId: $afterId, limit: 60) { nodes { path } nextAfterId }
 				}`,
 				{ kind, afterId }
 			)
+			const { sitemapEntries } = page
 
 			paths.push(...sitemapEntries.nodes.map((node) => node.path))
 			afterId = sitemapEntries.nextAfterId

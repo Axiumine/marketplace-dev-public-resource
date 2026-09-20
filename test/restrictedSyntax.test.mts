@@ -23,9 +23,16 @@ const PII_MESSAGE = 'the blanket Sentry PII flag is absent by decision, not set 
 const BODY_MESSAGE = 'the request body is never captured.'
 const HOOKS_MESSAGE = '`beforeSend` and `beforeSendTransaction` are wired together or not at all.'
 
+// One instance for the whole file, not one per call: `ESLint` reads and compiles `eslint.config.js`
+// on construction, and this file is proving that same block dozens of times over. A fresh instance per
+// `lintFixture`/`lintImports` call repeated that compile on every single `it`, which is what made this
+// suite flake on a slow run — some calls landed past Vitest's default per-test timeout for no reason
+// connected to the assertion. Building it once amortises that cost across every call below.
+const eslint = new ESLint()
+
 const lintFixture = async (name: string) => {
 	const code = await readFile(new URL(`${name}.mts.fixture`, FIXTURES), 'utf8')
-	const [result] = await new ESLint().lintText(code, { filePath: 'test/restrictedSyntaxFixture.mts' })
+	const [result] = await eslint.lintText(code, { filePath: 'test/restrictedSyntaxFixture.mts' })
 
 	return (result?.messages ?? []).filter((message) => message.ruleId === 'no-restricted-syntax')
 }
@@ -40,19 +47,26 @@ describe('the no-restricted-syntax block fires on every shape it names', () => {
 		['literal-node-tls-reject-unauthorized', TLS_MESSAGE],
 		['max-incoming-request-body-size', BODY_MESSAGE],
 		['before-send-without-transaction', HOOKS_MESSAGE]
-	])('reports %s exactly once', async (fixture, expected) => {
-		const messages = await lintFixture(fixture)
+	])(
+		'reports %s exactly once',
+		async (fixture, expected) => {
+			const messages = await lintFixture(fixture)
 
-		expect(messages).toHaveLength(1)
-		expect(messages[0]?.message).toContain(expected)
-		expect(messages[0]?.severity).toBe(2)
-	})
+			expect(messages).toHaveLength(1)
+			expect(messages[0]?.message).toContain(expected)
+			expect(messages[0]?.severity).toBe(2)
+		},
+		// One shared `ESLint` instance amortises the config compile, but a slow machine running every
+		// fixture in this file back to back can still outrun Vitest's default per-test timeout — not
+		// because any assertion is slow, but because of where in that shared queue a given call lands.
+		30_000
+	)
 })
 
 describe('the block stays silent on the shape the services carry', () => {
 	it('reports nothing on the compliant init options', async () => {
 		expect(await lintFixture('compliant')).toStrictEqual([])
-	})
+	}, 30_000)
 })
 
 const ITEM_CATEGORY_MESSAGE = 'ADR-012: `itemCategory` is written by marketplace-dev-admin-authenticated-resource'
@@ -76,17 +90,21 @@ describe('the itemCategory write ban fires on every shape it names', () => {
 		['item-category-write-call', ITEM_CATEGORY_MESSAGE],
 		['item-category-write-computed', ITEM_CATEGORY_MESSAGE],
 		['item-category-write-alias', ITEM_CATEGORY_ALIAS_MESSAGE]
-	])('reports %s exactly once', async (fixture, expected) => {
-		const messages = await lintFixture(fixture)
+	])(
+		'reports %s exactly once',
+		async (fixture, expected) => {
+			const messages = await lintFixture(fixture)
 
-		expect(messages).toHaveLength(1)
-		expect(messages[0]?.message).toContain(expected)
-		expect(messages[0]?.severity).toBe(2)
-	})
+			expect(messages).toHaveLength(1)
+			expect(messages[0]?.message).toContain(expected)
+			expect(messages[0]?.severity).toBe(2)
+		},
+		30_000
+	)
 
 	it('reports nothing on a read, which is all this tier does with the collection', async () => {
 		expect(await lintFixture('item-category-compliant')).toStrictEqual([])
-	})
+	}, 30_000)
 })
 
 const REDIS_DEL_MESSAGE = 'BCON-08: one Redis key per `del`.'
@@ -110,17 +128,21 @@ describe('the one-key-per-del rule fires on every batched shape', () => {
 		['redis-del-two-arguments', REDIS_DEL_MESSAGE],
 		['redis-del-array-argument', REDIS_DEL_MESSAGE],
 		['redis-del-spread-argument', REDIS_DEL_MESSAGE]
-	])('reports %s exactly once', async (fixture, expected) => {
-		const messages = await lintFixture(fixture)
+	])(
+		'reports %s exactly once',
+		async (fixture, expected) => {
+			const messages = await lintFixture(fixture)
 
-		expect(messages).toHaveLength(1)
-		expect(messages[0]?.message).toContain(expected)
-		expect(messages[0]?.severity).toBe(2)
-	})
+			expect(messages).toHaveLength(1)
+			expect(messages[0]?.message).toContain(expected)
+			expect(messages[0]?.severity).toBe(2)
+		},
+		30_000
+	)
 
 	it('reports nothing on the per-key shape the session code carries', async () => {
 		expect(await lintFixture('redis-del-compliant')).toStrictEqual([])
-	})
+	}, 30_000)
 })
 
 const SEED_MESSAGE = 'An integration test seeds through the raw driver'
@@ -144,7 +166,7 @@ const UNIT_TEST_PATH = 'test/restrictedImportsFixture.mts'
 
 const lintImports = async (name: string, filePath: string) => {
 	const code = await readFile(new URL(`${name}.mts.fixture`, FIXTURES), 'utf8')
-	const [result] = await new ESLint().lintText(code, { filePath })
+	const [result] = await eslint.lintText(code, { filePath })
 
 	return (result?.messages ?? []).filter((message) => message.ruleId === 'no-restricted-imports')
 }
@@ -156,15 +178,15 @@ describe('an integration test may not seed through a Mongoose model', () => {
 		expect(messages).toHaveLength(1)
 		expect(messages[0]?.message).toContain(SEED_MESSAGE)
 		expect(messages[0]?.severity).toBe(2)
-	})
+	}, 30_000)
 
 	it('stays silent on the same import in a unit test, which mocks the model by name', async () => {
 		expect(await lintImports('integration-seed-via-model', UNIT_TEST_PATH)).toStrictEqual([])
-	})
+	}, 30_000)
 
 	it('stays silent on the raw-driver seed every harness here already carries', async () => {
 		expect(await lintImports('integration-seed-via-raw-driver', ITEST_PATH)).toStrictEqual([])
-	})
+	}, 30_000)
 })
 
 const SRC = new URL('../src/', import.meta.url)

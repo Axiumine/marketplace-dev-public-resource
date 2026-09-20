@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest'
-
 import {
 	assertNearPoint,
 	bboxToPolygon,
@@ -7,7 +5,8 @@ import {
 	MAX_BBOX_DEGREES,
 	MAX_NEARBY,
 	MAX_RADIUS_METERS
-} from '../src/lib/catalogue/geoArgs.mts'
+} from '@lib/catalogue/geoArgs.mjs'
+import { describe, expect, it } from 'vitest'
 
 /** Piazza del Duomo, Milan — longitude first, which is the one thing this whole module is about. */
 const MILAN = { lng: 9.1919, lat: 45.4642 }

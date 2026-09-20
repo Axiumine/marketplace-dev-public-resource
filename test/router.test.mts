@@ -1,4 +1,5 @@
-import type { Context, Next } from 'koa'
+import type { RouterContext } from '@koa/router'
+import type { Next } from 'koa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The two confirmation handlers are values, not factories: `createConfirmRegistrationRouter` is called at
@@ -23,8 +24,8 @@ const { default: router } = await import('../src/middleware/router/index.mts')
 // ctx.method / ctx.path (host matching is skipped when the router has no `host` option) and
 // writes the captured params onto ctx.request.params / ctx.params. No Koa app or http server
 // is needed to exercise route matching and handler dispatch.
-function makeCtx(method: string, path: string): Context {
-	return { method, path, request: {} } as unknown as Context
+function makeCtx(method: string, path: string): RouterContext {
+	return { method, path, request: {} } as unknown as RouterContext
 }
 
 const noopNext: Next = async () => {}

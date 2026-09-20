@@ -213,7 +213,7 @@ export async function createServer() {
 	// Use apolloServerKoa with custom endpoint
 	app.use(async (ctx: Context, next: Next) => {
 		if (ctx.path === ENDPOINT) {
-			// @ts-expect-error TS2769: No overload matches this call.
+			// v3 of @as-integrations/koa types this overload; v2 did not, and needed a suppression.
 			const middleware = apolloServerKoa(apolloServer, {
 				async context() {
 					return ctx

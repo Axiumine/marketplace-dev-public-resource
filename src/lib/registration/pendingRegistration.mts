@@ -1,4 +1,5 @@
 import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
+import { pendingRegistrationKey } from '@axiumine/marketplace-common/others/registrationKeys'
 import type { IRegistrationTarget } from '@lib/registration/registrationTargets.mjs'
 import { Binary } from 'mongodb'
 import { Types } from 'mongoose'
@@ -56,18 +57,16 @@ export interface IPendingRegistration {
 /**
  * Where a tier's pending registration for an address lives.
  *
- * ⚠️ **The key is the deterministic ciphertext of the address, not a digest of it** (ADR-043). A
- * `sha256` would key the record just as well and would quietly cost the reuse: the ciphertext is
- * *already* the value MongoDB indexes, so the same call that finds the record produces the bytes the
- * confirm step inserts, and nothing on this path ever holds a second representation of the address.
- *
- * The tier is in the key because `user` and `shopOwner` are unrelated collections (ADR-002) and one
- * person may legitimately be both, with the same address, at the same time.
+ * ⚠️ The key shape itself — ciphertext over digest, the hex encoding, the tier segment — is
+ * `pendingRegistrationKey`'s, in `marketplace-common` (ADR-043). What stays here is pairing it with the
+ * encryption: `target.encryptEmail` produces the one ciphertext both the key and `login.email` are built
+ * from, so the slot hands back key and ciphertext together and no caller can assemble one from a second,
+ * independently-encrypted address.
  */
 export async function pendingSlot(target: IRegistrationTarget, uEmail: string): Promise<IPendingSlot> {
 	const email = await target.encryptEmail(uEmail)
 
-	return { key: `${process.env.REDIS_KEY}pending:${target.tier}:${Buffer.from(email.buffer).toString('hex')}`, email }
+	return { key: pendingRegistrationKey(target.tier, email), email }
 }
 
 /**

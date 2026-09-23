@@ -32,6 +32,12 @@ export async function disconnectAllDatabases(exitCode: number = 0): Promise<neve
 		// nothing left to report to; the exit code below is what matters
 	}
 
+	// ⚠️ **Flushed before the exit below, deliberately.** `captureMessage`/`captureException` only queue
+	// an event — delivery is an outbound HTTPS call the SDK batches for later — and this function is
+	// every fatal path's one exit point (`start()`'s catch and `gracefulShutdown` both route through it).
+	// A capture with nothing after it but `process.exit()` is a capture that never leaves the process.
+	await Sentry.flush(2000)
+
 	// Single exit point, unreachable by any catch above.
 	process.exit(code)
 }

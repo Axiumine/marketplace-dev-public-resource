@@ -4,10 +4,11 @@ const MongoDBDisconnect = vi.fn()
 const RedisDisconnect = vi.fn()
 const captureMessage = vi.fn()
 const captureException = vi.fn()
+const flush = vi.fn()
 
 vi.mock('@axiumine/koa-utils/dataSources/MongoDB', () => ({ MongoDBDisconnect }))
 vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ RedisDisconnect }))
-vi.mock('@sentry/node', () => ({ captureMessage, captureException }))
+vi.mock('@sentry/node', () => ({ captureMessage, captureException, flush }))
 
 const { disconnectAllDatabases } = await import('../src/lib/db/disconnectAllDatabases.mts')
 
@@ -21,6 +22,7 @@ describe('disconnectAllDatabases', () => {
 		RedisDisconnect.mockReset().mockResolvedValue(undefined)
 		captureMessage.mockReset()
 		captureException.mockReset()
+		flush.mockReset().mockResolvedValue(true)
 		exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
 	})
 
@@ -113,5 +115,25 @@ describe('disconnectAllDatabases', () => {
 		await disconnectAllDatabases(1)
 
 		expect(captureMessage).not.toHaveBeenCalled()
+	})
+
+	// ⚠️ **B14, closed.** `captureMessage`/`captureException` only queue an event — delivery is an
+	// outbound HTTPS call the SDK batches for later — and this function's `process.exit()` is where
+	// every fatal path on this service actually leaves. A capture with nothing after it but that exit
+	// never reaches Sentry, which is exactly the crash where an alert matters most.
+	it('flushes Sentry before exiting, on the success path', async () => {
+		await disconnectAllDatabases()
+
+		expect(flush).toHaveBeenCalledExactlyOnceWith(2000)
+		expect(flush.mock.invocationCallOrder[0]).toBeLessThan(exit.mock.invocationCallOrder[0])
+	})
+
+	it('flushes Sentry before exiting, on the failure path too', async () => {
+		RedisDisconnect.mockRejectedValueOnce(new Error('redis down'))
+
+		await disconnectAllDatabases()
+
+		expect(flush).toHaveBeenCalledExactlyOnceWith(2000)
+		expect(flush.mock.invocationCallOrder[0]).toBeLessThan(exit.mock.invocationCallOrder[0])
 	})
 })

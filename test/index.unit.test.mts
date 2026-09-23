@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const captureException = vi.fn()
 const captureMessage = vi.fn()
+const flush = vi.fn()
 const MongoDBConnect = vi.fn()
 const RedisConnect = vi.fn()
 const disconnectAllDatabases = vi.fn()
@@ -25,7 +26,7 @@ const apolloServerOptions: { pluginCount: number | undefined; csrfPrevention: un
 const apolloKoaMiddleware = vi.fn()
 const apolloKoaOptions: { context: () => Promise<unknown> }[] = []
 
-vi.mock('@sentry/node', () => ({ captureException, captureMessage }))
+vi.mock('@sentry/node', () => ({ captureException, captureMessage, flush }))
 vi.mock('@as-integrations/koa', () => ({
 	koaMiddleware: (_server: unknown, options: { context: () => Promise<unknown> }) => {
 		apolloKoaOptions.push(options)
@@ -495,21 +496,47 @@ describe('process handlers', () => {
 
 	beforeEach(() => {
 		captureException.mockReset()
+		flush.mockReset().mockResolvedValue(true)
 		exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
 	})
 	afterEach(() => exit.mockRestore())
 
-	it('onUnhandledRejection reports the reason and exits 1', () => {
+	it('onUnhandledRejection reports the reason, flushes it, and exits 1', async () => {
 		const reason = new Error('boom')
+
 		onUnhandledRejection(reason)
+
 		expect(captureException).toHaveBeenCalledWith(reason)
+		expect(flush).toHaveBeenCalledExactlyOnceWith(2000)
+
+		// ⚠️ The capture above is only queued — delivery is what `flush` waits for. Asserting `exit`
+		// before that promise settles is what a mutant deleting the `.finally()` wrapper would still
+		// pass: the exit has to be observed to follow the flush, not merely to have happened at all.
+		expect(exit).not.toHaveBeenCalled()
+		await flush.mock.results[0]!.value
 		expect(exit).toHaveBeenCalledWith(1)
 	})
 
-	it('onUncaughtException reports the error and exits 1', () => {
+	it('onUncaughtException reports the error, flushes it, and exits 1', async () => {
 		const error = new Error('kaboom')
+
 		onUncaughtException(error)
+
 		expect(captureException).toHaveBeenCalledWith(error)
+		expect(flush).toHaveBeenCalledExactlyOnceWith(2000)
+		expect(exit).not.toHaveBeenCalled()
+		await flush.mock.results[0]!.value
+		expect(exit).toHaveBeenCalledWith(1)
+	})
+
+	// A flush that never reports success must still let the process leave — telemetry is best-effort,
+	// never a veto on exiting after an unhandled failure.
+	it('still exits when the flush itself reports it did not finish in time', async () => {
+		flush.mockResolvedValue(false)
+
+		onUnhandledRejection(new Error('boom'))
+
+		await flush.mock.results[0]!.value
 		expect(exit).toHaveBeenCalledWith(1)
 	})
 })

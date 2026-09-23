@@ -172,14 +172,21 @@ export const gracefulShutdown = async (signal: string, apolloServer: ApolloServe
 	httpServer.close(() => disconnectAllDatabases(0))
 }
 
+// ⚠️ **Every capture on a fatal path is flushed before the process exits, here and below.**
+// `Sentry.captureException`/`captureMessage` only queue an event; delivery is an outbound HTTPS call
+// the SDK batches for later. `process.exit()` tears the event loop down immediately, so a capture with
+// nothing after it but an exit is dropped — exactly the crash where an alert matters most. `flush()`
+// drains the queue (or gives up after its own timeout) before the process is allowed to leave.
+
 export function onUnhandledRejection(reason: unknown): void {
 	Sentry.captureException(reason)
-	process.exit(1)
+	// A synchronous handler cannot `await`, so the exit is chained onto the flush instead of following it.
+	void Sentry.flush(2000).finally(() => process.exit(1))
 }
 
 export function onUncaughtException(error: unknown): void {
 	Sentry.captureException(error)
-	process.exit(1)
+	void Sentry.flush(2000).finally(() => process.exit(1))
 }
 
 /**
@@ -319,7 +326,9 @@ export async function start() {
 		return { httpServer, apolloServer }
 	} catch (error) {
 		console.error('error', error)
-		Sentry.captureException(error) // @fixme does not send the log — check!
+		Sentry.captureException(error)
+		// `disconnectAllDatabases` is this path's one exit point and is what flushes the capture above
+		// before it calls `process.exit()` — see its own doc comment.
 		await disconnectAllDatabases(1)
 	}
 }
@@ -338,7 +347,7 @@ if (process.env.NODE_ENV !== 'test') {
 				process.on('SIGINT', () => gracefulShutdown('SIGINT', srv.apolloServer, srv.httpServer))
 			}
 		})
-		.catch((e: unknown) => {
+		.catch(async (e: unknown) => {
 			/*
 			 * ⚠️ The exit code is the whole point, and it used to be **0**. `checkRequiredEnv()` throws
 			 * outside `start()`'s own try, so a missing variable lands here rather than in the
@@ -351,6 +360,9 @@ if (process.env.NODE_ENV !== 'test') {
 			 */
 			console.error('fatal: the service could not start', e)
 			Sentry.captureException(e)
+			// Flushed before the exit for the same reason `onUnhandledRejection` is — a capture with
+			// nothing after it but `process.exit()` is a capture that never reaches Sentry.
+			await Sentry.flush(2000)
 			process.exit(1)
 		})
 }

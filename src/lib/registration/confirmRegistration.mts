@@ -1,3 +1,6 @@
+import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
+import { assertUnderRateLimit } from '@axiumine/marketplace-common/others/assertUnderRateLimit'
+import { RATE_WINDOW_SECONDS } from '@lib/access/guardPublicWrite.mjs'
 import {
 	deletePendingRegistration,
 	type IPendingRegistration,
@@ -14,6 +17,17 @@ import {
 	REGISTRATION_TARGET_USER
 } from '@lib/registration/registrationTargets.mjs'
 import mongoose, { type ClientSession, type Types } from 'mongoose'
+
+/**
+ * Confirm attempts one address may make per hour, on one tier's own counter.
+ *
+ * ⚠️ **This is `guardPublicWrite`'s rate-limit half, called directly rather than through it.** The route
+ * is a `GET` a mail client follows, with nothing to carry a Turnstile token in — `guardPublicWrite` would
+ * refuse every visitor in production the moment it reached `assertTurnstile`. The counter is the guard
+ * that fits the trip: it costs an attacker who does not hold the mailbox a full hour to spend a fresh
+ * batch of guesses, the same trade `userUpdatePwd` makes on its own hash-bearing confirm.
+ */
+const PER_EMAIL_PER_HOUR = 10
 
 /**
  * Where every refusal sends the browser.
@@ -74,6 +88,13 @@ function accountDocument(target: IRegistrationTarget, record: IPendingRegistrati
  * `login.password` becomes the one just submitted: the person proved they can read mail at the address and
  * chose a password doing it, which is exactly what a reset proves. The old hash is not kept — nothing may
  * outlive the closure that could be used to log in as the account before this moment.
+ *
+ * ⚠️ **`resetPwd.resetHash`/`resetDateReq` go with it, for the reason `login.password` does.** A reset
+ * hash minted before the closure — by whoever held the account, intruder or owner — still passes
+ * `getResetPwd`, which checks only the account's *current* `deleted` state and has no way to know one was
+ * ever set. Left in place, it would outlive the restore and still open `userUpdatePwd`/`updatePwd` within
+ * its own 60-minute window, silently overwriting the password this restore just set. The same invariant
+ * that clears the old credential clears the other way in.
  */
 function restoreUpdate(target: IRegistrationTarget, record: IPendingRegistration) {
 	return {
@@ -82,7 +103,7 @@ function restoreUpdate(target: IRegistrationTarget, record: IPendingRegistration
 			emailVerify: { valid: true },
 			...(target.waitApprov ? { waitApprov: true } : {})
 		},
-		$unset: { deleted: '', deletedBy: '' }
+		$unset: { deleted: '', deletedBy: '', 'resetPwd.resetHash': '', 'resetPwd.resetDateReq': '' }
 	}
 }
 
@@ -192,12 +213,25 @@ async function openAccount(target: IRegistrationTarget, record: IPendingRegistra
  * Every refusal throws `EMAIL_CHECK_LINK` and the handler above redirects to it, which is the contract
  * koa-utils' `router/verifyEmail.mts` had and this replaces byte for byte at the same three addresses.
  *
- * The guards, in koa-utils' own order:
+ * The guards, in order:
  *
+ * 0. **too many confirm attempts this hour** — `assertUnderRateLimit`, ahead of everything else. A `GET`
+ *    a mail client follows cannot carry a Turnstile token, so this is the whole of the throttle;
  * 1. **no record** — expired, never written, or already consumed. The link is dead;
- * 2. **five strikes spent** — the record is destroyed and its owner told, because at that point the link
- *    is being guessed at rather than clicked;
- * 3. **wrong hash** — one strike, and a mail naming the strike this attempt made.
+ * 2. **the submitted hash matches** — the account opens (or is handed back), whatever `requestTimes`
+ *    reads. A correct hash is proof, and proof does not stop being proof because the record also
+ *    survived somebody else's wrong guesses;
+ * 3. **five strikes spent** — only reached on a *wrong* hash now. The record is destroyed and its owner
+ *    told, because at that point the link is being guessed at rather than clicked;
+ * 4. **wrong hash, strikes left** — one strike, and a mail naming the strike this attempt made.
+ *
+ * ⚠️ **The hash is compared before the ceiling is ever consulted, and that order is load-bearing.**
+ * `requestTimes` is one counter shared by everybody who clicks this link, not just its owner — an
+ * attacker who knows only the address (a URL path segment) can fire wrong-hash `GET`s that drive it to
+ * the ceiling with no guess at the real hash required. Checking the ceiling first would then let those
+ * guesses disqualify the owner's own correct click: the record would be disposed of before the hash that
+ * proves who is asking was ever read. Comparing first means a right answer always wins, no matter how
+ * many wrong ones came before it.
  *
  * ⚠️ **The three-day guard is gone and is not missing.** It was a comparison run lazily on a visit, so a
  * registration nobody visited was never abandoned and held its address for ever; the window is now the
@@ -215,13 +249,29 @@ async function openAccount(target: IRegistrationTarget, record: IPendingRegistra
  * person has no session from which to ask. Signing up again at the same address is the request, and the
  * activation link is the proof — the same proof a password reset accepts.
  */
-export const createConfirmRegistration = (target: IRegistrationTarget) =>
-	async function confirmRegistration(uEmail: string, hash: string): Promise<void> {
+export const createConfirmRegistration = (target: IRegistrationTarget) => {
+	const bucket = `${target.tier}ConfirmRegistration:email`
+
+	return async function confirmRegistration(uEmail: string, hash: string): Promise<void> {
+		await assertUnderRateLimit(redisClient, bucket, uEmail, PER_EMAIL_PER_HOUR, RATE_WINDOW_SECONDS)
+
 		const slot = await pendingSlot(target, uEmail)
 		const record = await readPendingRegistration(slot.key)
 
 		if (record === null) {
 			throw new Error(EMAIL_CHECK_LINK)
+		}
+
+		if (record.hash === hash) {
+			// A replay whose first run already committed sends no second welcome mail: it is the same account
+			// being confirmed twice, and the person read the first one.
+			if (await openAccount(target, record)) {
+				await registrationMailer.sendWelcome(uEmail)
+			}
+
+			await deletePendingRegistration(slot.key)
+
+			return
 		}
 
 		if (record.requestTimes >= MAX_VERIFY_ATTEMPTS) {
@@ -231,21 +281,12 @@ export const createConfirmRegistration = (target: IRegistrationTarget) =>
 			throw new Error(EMAIL_CHECK_LINK)
 		}
 
-		if (record.hash !== hash) {
-			await strikePendingRegistration(slot.key)
-			await registrationMailer.wrongHash(uEmail, record.requestTimes + 1)
+		await strikePendingRegistration(slot.key)
+		await registrationMailer.wrongHash(uEmail, record.requestTimes + 1)
 
-			throw new Error(EMAIL_CHECK_LINK)
-		}
-
-		// A replay whose first run already committed sends no second welcome mail: it is the same account
-		// being confirmed twice, and the person read the first one.
-		if (await openAccount(target, record)) {
-			await registrationMailer.sendWelcome(uEmail)
-		}
-
-		await deletePendingRegistration(slot.key)
+		throw new Error(EMAIL_CHECK_LINK)
 	}
+}
 
 /** Bound to `user`, for `GET /check/verify-email-user/:email/:hash`. */
 export const confirmUserRegistration = createConfirmRegistration(REGISTRATION_TARGET_USER)

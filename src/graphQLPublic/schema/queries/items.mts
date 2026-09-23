@@ -1,6 +1,11 @@
 import { Item } from '@axiumine/marketplace-common/models/MongoDB/Item'
 import { liveCompanyBySlug } from '@lib/catalogue/liveCompanyBySlug.mjs'
-import { IItemHit, liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET } from '@lib/catalogue/liveItemsAcrossShops.mjs'
+import {
+	IItemHit,
+	liveItemsAcrossShops,
+	MAX_CROSS_SHOP_OFFSET,
+	moreLiveItemsExist
+} from '@lib/catalogue/liveItemsAcrossShops.mjs'
 import { assertObjectId, assertOffset, clampLimit, COUNT_CAP, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicItemPage } from '@ptypes/GraphQLPublicItemPage.mjs'
 import { GraphQLID, GraphQLInt, GraphQLString } from 'graphql'
@@ -108,13 +113,25 @@ async function itemsOfShop(companySlug: string, idCategory: Types.ObjectId | und
 }
 
 async function itemsOfCategory(idCategory: Types.ObjectId, limit: number, offset: number) {
+	const match = { idCategory }
+	const sort = { _id: 1 } as const
+
 	const [docs, total] = await Promise.all([
-		liveItemsAcrossShops({ idCategory }, {}, { _id: 1 }, offset, limit + 1),
+		liveItemsAcrossShops(match, {}, sort, offset, limit + 1),
 		Item.countDocuments({ idCategory, ...livePublic() }, { limit: COUNT_CAP })
 	])
 
-	const hasMore = docs.length > limit
-	if (hasMore) docs.pop()
+	let hasMore = docs.length > limit
+
+	// The bounded fetch's own window can run out before the join ever gets a chance to say there is no
+	// more — see `liveItemsAcrossShops`. Only that ambiguous case pays for the exact, unbounded check;
+	// the common case above answers for free from the sentinel document the `limit + 1` request already
+	// carries.
+	if (hasMore) {
+		docs.pop()
+	} else {
+		hasMore = await moreLiveItemsExist(match, {}, sort, offset + limit)
+	}
 
 	return {
 		nodes: docs,

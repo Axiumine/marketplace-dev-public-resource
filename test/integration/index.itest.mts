@@ -872,18 +872,33 @@ describe('the strike counter belongs to the record, and does not buy time', () =
 		await expect(accountsByEmail('user', email)).resolves.toEqual([])
 	})
 
-	// The ceiling is checked before the hash, so the correct link no longer works either: at five
-	// strikes the link is being guessed at rather than clicked, and what is left of the registration
-	// is destroyed rather than left for the guesser to keep working on.
-	it('destroys a record whose five attempts are spent, and opens nothing', async () => {
-		const { email, record, slot } = await submitRegistration('user')
+	// The hash is checked before the ceiling, so a *wrong* guess at five spent strikes is what destroys
+	// what is left of the registration — the link is being guessed at rather than clicked.
+	it('destroys a record whose five attempts are spent, on a further wrong guess', async () => {
+		const { email, slot } = await submitRegistration('user')
 		await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
 
-		expect(await click('user', email, record.hash)).toBe('/x/email-check')
+		expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
 
 		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
 		await expect(accountsByEmail('user', email)).resolves.toEqual([])
 		expect(sent).toEqual([['tooMuchVerifyRequests', email]])
+	})
+
+	// ⚠️ **B6, closed.** Before the fix the ceiling was checked ahead of the hash, so anybody who knew
+	// only the address could fire wrong-hash clicks to drive `requestTimes` to the ceiling and dispose
+	// of the owner's still-valid registration the moment they clicked their own, correct link — no
+	// guess at the real hash required. The hash is checked first now: it opens the account no matter
+	// how many strikes a stranger spent on the record first.
+	it('opens the account on a correct hash even after five attempts are spent', async () => {
+		const { email, record, slot } = await submitRegistration('user')
+		await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
+
+		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+
+		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
+		expect(sent).toEqual([['sendWelcome', email]])
 	})
 })
 

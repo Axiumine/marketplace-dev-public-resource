@@ -15,11 +15,13 @@ import { type IRegistrationTarget, REGISTRATION_TARGET_USER } from '@lib/registr
  * is gone (confirmed, expired, or spent on five wrong hashes) the only way forward is to register again,
  * which is the path that proves who is asking by setting a password only the new mail can activate.
  *
- * ⚠️ **The record is read before it is written.** `renewPendingRegistration` writes three fields, so
- * against a key that no longer exists it would *create* a record holding a hash and nothing else — no
- * `_id`, no address, no password — which the confirm step could not turn into an account and which would
- * sit there being a valid-looking link for three days. `hSet` builds what it is given; it does not refuse
- * a missing key.
+ * ⚠️ **The record is read before it is written, and the write is what actually decides.** The read exists
+ * so an address with nothing pending costs one `HGETALL` and mails nothing; it is not what makes the
+ * renewal safe. `renewPendingRegistration` runs its own existence check in the same script as the write,
+ * so a confirmation that deletes the key in the gap between this read and that write leaves the renewal
+ * refusing rather than resurrecting a three-field ghost record — no `_id`, no address, no password — that
+ * would otherwise sit there looking like a valid link for three days. The mail below is sent only when the
+ * write reports it actually renewed something, never on the strength of the read alone.
  *
  * ⚠️ **Answers nothing either way**, and the caller answers `true` for every address. A mutation that
  * behaved differently for an address that is registered is an enumeration oracle, and one that costs
@@ -38,7 +40,10 @@ export const createResendRegistration = (target: IRegistrationTarget) =>
 
 		const hash = emailHash()
 
-		await renewPendingRegistration(slot, hash, new Date())
+		if (!(await renewPendingRegistration(slot, hash, new Date()))) {
+			return
+		}
+
 		await target.sendVerifyEmail(uEmail, hash)
 	}
 

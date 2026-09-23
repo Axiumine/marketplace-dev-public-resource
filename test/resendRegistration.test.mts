@@ -50,6 +50,7 @@ beforeEach(() => {
 	vi.clearAllMocks()
 	pendingSlot.mockResolvedValue(SLOT)
 	readPendingRegistration.mockResolvedValue(record)
+	renewPendingRegistration.mockResolvedValue(true)
 })
 
 describe('resendRegistration — a registration is pending', () => {
@@ -98,6 +99,30 @@ describe('resendRegistration — a registration is pending', () => {
 
 		expect(renewPendingRegistration.mock.calls[0]).toHaveLength(3)
 		expect(renewPendingRegistration.mock.calls[0][0]).toBe(SLOT)
+	})
+})
+
+describe('resendRegistration — the read and the renew disagree (B47)', () => {
+	// ⚠️ **B47, closed.** The initial read and the renewal write are two Redis round trips with no lock
+	// between them: a confirmation racing in that gap can delete the key the read just saw. Before the fix,
+	// `renewPendingRegistration`'s plain `HSET` would still land and auto-vivify a ghost record, and this
+	// module — trusting the read alone — would mail a link for it. The renewal's own answer is what this
+	// module now trusts instead: a read that found a record is not proof by the time the write runs.
+	it('sends no mail when the renewal finds the key already gone, despite the read finding it', async () => {
+		readPendingRegistration.mockResolvedValue(record)
+		renewPendingRegistration.mockResolvedValueOnce(false)
+
+		await expect(resendRegistration('anna@test.it')).resolves.toBeUndefined()
+
+		expect(sendVerifyEmail).not.toHaveBeenCalled()
+	})
+
+	// The read still ran and the hash was still minted — the renewal call is what actually decides, and
+	// deciding late is cheap: no second Redis write, no mail, nothing left to clean up.
+	it('still resolves like every other outcome of this mutation', async () => {
+		renewPendingRegistration.mockResolvedValueOnce(false)
+
+		await expect(resendRegistration('anna@test.it')).resolves.toBeUndefined()
 	})
 })
 

@@ -111,6 +111,36 @@ describe('shopOwnerRegister — validation, before anything is spent', () => {
 			extensions: { description: 'The two passwords do not match' }
 		})
 	})
+
+	// ⚠️ **B11**: `checkPwdLen` is mocked to a no-op above, so this exercises the real
+	// `assertPasswordByteLength` — the guard `checkPwdLen`'s UTF-16 `.length` count cannot catch. 71 ASCII
+	// bytes plus one precomposed `é` is 72 UTF-16 code units — the same count a 72-character ASCII password
+	// has — but 73 UTF-8 bytes, past what bcrypt actually hashes.
+	it('refuses a password that is 72 characters but 73 UTF-8 bytes', async () => {
+		const password = `${'a'.repeat(71)}é`
+		expect(password.length).toBe(72)
+		expect(Buffer.byteLength(password, 'utf8')).toBe(73)
+
+		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).rejects.toMatchObject(
+			{
+				message: 'Bad Request',
+				extensions: { http: { status: 400 }, description: 'Password is too long' }
+			}
+		)
+
+		expect(guardPublicWrite).not.toHaveBeenCalled()
+		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+	})
+
+	// The boundary's accepting side: exactly 72 UTF-8 bytes must pass through to the flow untouched.
+	it('accepts a password that is exactly 72 UTF-8 bytes', async () => {
+		const password = 'a'.repeat(72)
+		expect(Buffer.byteLength(password, 'utf8')).toBe(72)
+
+		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).resolves.toBe(true)
+
+		expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, password)
+	})
 })
 
 describe('shopOwnerRegister — the guard', () => {

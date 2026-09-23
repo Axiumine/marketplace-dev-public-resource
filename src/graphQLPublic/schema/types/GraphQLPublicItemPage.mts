@@ -13,6 +13,13 @@ import { GraphQLBoolean, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectT
  * spans two collections and no count can join — so the figure is an upper bound even when it is far
  * below the cap. `liveItemsAcrossShops` documents the whole problem and what would fix it.
  *
+ * ⚠️ **`hasMore` does not inherit that inexactness, on either path — but on the cross-shop one it takes a
+ * fallback query to keep the promise.** The single-collection paths derive it from the documents actually
+ * fetched, same as the company page. The cross-shop path's own fetch is bounded ahead of its join (see
+ * `liveItemsAcrossShops`) and can therefore under-count for a reason unrelated to whether more live items
+ * exist; `moreLiveItemsExist` is what the resolvers fall back on so `hasMore` still answers exactly rather
+ * than inheriting the bound meant for `total` alone.
+ *
  * Two page envelopes (this and the company one) rather than one generic type because graphql-js has
  * no generics: a parameterised page would need a factory minting a distinct `GraphQLObjectType` per
  * element type anyway, and the factory's generated names (`GraphQLPage_GraphQLPublicItemHit`) are

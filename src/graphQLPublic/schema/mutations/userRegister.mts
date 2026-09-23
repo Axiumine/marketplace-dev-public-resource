@@ -2,6 +2,7 @@ import { throwErrorWrongUserInput } from '@axiumine/koa-utils/graphQL/throw/thro
 import { checkEmailLen } from '@axiumine/koa-utils/lib/checkEmailLen'
 import { checkPwdLen } from '@axiumine/koa-utils/lib/checkPwdLen'
 import { tryCatchRethrow } from '@axiumine/koa-utils/lib/tryCatchRethrow'
+import { assertPasswordByteLength } from '@axiumine/marketplace-common/others/assertPasswordByteLength'
 import { guardPublicWrite } from '@lib/access/guardPublicWrite.mjs'
 import { submitUserRegistration } from '@lib/registration/submitRegistration.mjs'
 import { GraphQLBoolean, GraphQLError, GraphQLNonNull, GraphQLString } from 'graphql'
@@ -61,6 +62,9 @@ export const userRegister = {
 		const uEmail = email.toLowerCase().trim()
 		checkEmailLen(uEmail)
 		checkPwdLen(password)
+		// `checkPwdLen` counts UTF-16 code units; bcrypt truncates on UTF-8 bytes. See the helper's own
+		// doc comment for why a second, byte-accurate check is needed next to the character one.
+		assertPasswordByteLength(password)
 
 		if (password !== repeatPassword) throw throwErrorWrongUserInput('The two passwords do not match')
 

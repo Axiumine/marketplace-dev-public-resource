@@ -31,6 +31,15 @@ type LiveItemsAcrossShops = (
 
 const liveItemsAcrossShops = vi.fn<LiveItemsAcrossShops>(async () => [])
 
+type MoreLiveItemsExist = (
+	match: Record<string, unknown>,
+	companyMatch: Record<string, unknown>,
+	sort: PipelineStage.Sort['$sort'],
+	position: number
+) => Promise<boolean>
+
+const moreLiveItemsExist = vi.fn<MoreLiveItemsExist>(async () => false)
+
 vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({
 	Company: { find: companyFind, countDocuments: companyCountDocuments }
 }))
@@ -44,6 +53,7 @@ vi.mock('../src/lib/catalogue/liveCompanyBySlug.mts', () => ({ liveCompanyBySlug
 vi.mock('../src/lib/catalogue/liveItemsAcrossShops.mts', () => ({
 	liveItemsAcrossShops,
 	MAX_CROSS_SHOP_OFFSET: 2_000,
+	moreLiveItemsExist,
 	OVERFETCH: 3
 }))
 
@@ -72,6 +82,7 @@ beforeEach(async () => {
 	companyCountDocuments.mockResolvedValue(0)
 	itemAggregate.mockResolvedValue([])
 	liveItemsAcrossShops.mockResolvedValue([])
+	moreLiveItemsExist.mockResolvedValue(false)
 	liveCompanyBySlug.mockResolvedValue(company)
 	;({ items } = await import('../src/graphQLPublic/schema/queries/items.mts'))
 	;({ itemBySlug } = await import('../src/graphQLPublic/schema/queries/itemBySlug.mts'))
@@ -279,17 +290,36 @@ describe('items', () => {
 			expect(page.hasMore).toBe(true)
 			expect(page.nodes).toHaveLength(2)
 			expect(liveCompanyBySlug).not.toHaveBeenCalled()
+			// The sentinel document already answered the question, so the fallback is never worth paying for.
+			expect(moreLiveItemsExist).not.toHaveBeenCalled()
 		})
 
-		// Same boundary as the shop path, and it matters more here: the join drops documents, so a page that
-		// comes back exactly full is the *common* case rather than the coincidence it is above.
-		it('reports no next page on an exactly full window, and keeps both documents', async () => {
+		// ⚠️ A short window is now ambiguous rather than conclusive: it might mean there is no more, or it
+		// might mean the bounded fetch's own overfetch window ran dry before the join could say so.
+		// `moreLiveItemsExist` is what tells the two apart — the fallback both cross-shop paths need.
+		it('falls back to the exact check on a short window, and reports what it says', async () => {
 			liveItemsAcrossShops.mockResolvedValueOnce([item(1), item(2)])
+			moreLiveItemsExist.mockResolvedValueOnce(false)
 
 			const page = await items.resolve(null, { idCategory: idCategory.toHexString(), limit: 2 })
 
 			expect(page.hasMore).toBe(false)
 			expect(page.nodes).toHaveLength(2)
+			expect(moreLiveItemsExist).toHaveBeenCalledExactlyOnceWith({ idCategory }, {}, { _id: 1 }, 2)
+		})
+
+		// The defect this guards: a bounded window that came back short because every raw match it looked at
+		// belonged to an unpublished shop, while a live one sits further out. Without the fallback this would
+		// have reported `false` and hidden a page that exists.
+		it('reports a next page the bounded window could not see, once the fallback finds one', async () => {
+			liveItemsAcrossShops.mockResolvedValueOnce([item(1)])
+			moreLiveItemsExist.mockResolvedValueOnce(true)
+
+			const page = await items.resolve(null, { idCategory: idCategory.toHexString(), limit: 2, offset: 10 })
+
+			expect(page.hasMore).toBe(true)
+			expect(page.nodes).toHaveLength(1)
+			expect(moreLiveItemsExist).toHaveBeenCalledExactlyOnceWith({ idCategory }, {}, { _id: 1 }, 12)
 		})
 
 		// ⚠️ **Never exact here, and not because of the cap**: this count sees `item.published` and cannot
@@ -551,8 +581,14 @@ describe('searchItems', () => {
 		expect(result.totalIsExact).toBe(false)
 	})
 
-	// `hasMore` comes from documents that went through the join, which is what keeps it exact while the
-	// count beside it is only an upper bound.
+	// `hasMore` comes from documents that went through the join when the sentinel is among them, and from
+	// `moreLiveItemsExist` when it is not — the join's own bounded window cannot be trusted to say there
+	// is no more on its own. See `liveItemsAcrossShops` for why.
+	//
+	// ⚠️ No `moreLiveItemsExist.mockResolvedValueOnce` here: the "full page and one more" case never calls
+	// it at all, and a queued `Once` implementation nothing consumes leaks into whichever later test calls
+	// the mock next — the outer `beforeEach`'s persistent `false` default is what both cases actually rely
+	// on, and it is reasserted fresh before every test.
 	it.each([
 		['a full page and one more', 3, true, 2],
 		['exactly a full page', 2, false, 2]
@@ -564,6 +600,33 @@ describe('searchItems', () => {
 		expect(liveItemsAcrossShops.mock.calls[0][4]).toBe(3)
 		expect(result.hasMore).toBe(hasMore)
 		expect(result.nodes).toHaveLength(kept)
+	})
+
+	it('never pays for the fallback once the sentinel document already answered the question', async () => {
+		liveItemsAcrossShops.mockResolvedValueOnce([item(0), item(1), item(2)])
+
+		await resolveSearch({ limit: 2 })
+
+		expect(moreLiveItemsExist).not.toHaveBeenCalled()
+	})
+
+	// The defect this guards: a short window from the bounded fetch means nothing on its own — it might
+	// be the end of the category, or it might be an overfetch window that ran dry on dead shops while a
+	// live match sits further out. Only `moreLiveItemsExist` can tell the two apart.
+	it('reports a next page the bounded window could not see, once the fallback finds one', async () => {
+		liveItemsAcrossShops.mockResolvedValueOnce([item(0)])
+		moreLiveItemsExist.mockResolvedValueOnce(true)
+
+		const result = await resolveSearch({ limit: 2, offset: 10 })
+
+		expect(result.hasMore).toBe(true)
+		expect(result.nodes).toHaveLength(1)
+		expect(moreLiveItemsExist).toHaveBeenCalledExactlyOnceWith(
+			{ $text: { $search: 'sneaker' } },
+			{},
+			{ score: { $meta: 'textScore' } },
+			12
+		)
 	})
 
 	it('clamps the page size and defaults it to one screen', async () => {

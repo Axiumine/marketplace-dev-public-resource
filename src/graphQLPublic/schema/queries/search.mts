@@ -2,7 +2,7 @@ import { Company } from '@axiumine/marketplace-common/models/MongoDB/Company'
 import { Item } from '@axiumine/marketplace-common/models/MongoDB/Item'
 import { GraphQLInputNearPoint } from '@GraphQLInput/GraphQLInputGeo.mjs'
 import { assertNearPoint, centerSphereFilter, INearPoint } from '@lib/catalogue/geoArgs.mjs'
-import { liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET } from '@lib/catalogue/liveItemsAcrossShops.mjs'
+import { liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET, moreLiveItemsExist } from '@lib/catalogue/liveItemsAcrossShops.mjs'
 import { assertOffset, clampLimit, COUNT_CAP, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicCompanyPage } from '@ptypes/GraphQLPublicCompanyPage.mjs'
 import { GraphQLPublicItemPage } from '@ptypes/GraphQLPublicItemPage.mjs'
@@ -154,7 +154,9 @@ export const searchCompanies = {
  * ⚠️ **`totalIsExact` is `false` on every call, and not because of the cap.** The count runs on `item`
  * alone, where it can see neither `company.published` nor the radius — both live in the other
  * collection and no count can join. It is an upper bound, honestly labelled, exactly as the category
- * listing's is. `hasMore` is unaffected: it comes from documents that went through the join.
+ * listing's is. `hasMore`, unlike `total`, still comes out exact — but only because a short fetch falls
+ * back on `moreLiveItemsExist` rather than trusting the bounded window's own document count. See
+ * `liveItemsAcrossShops` for why the window alone cannot be trusted with that answer.
  */
 export const searchItems = {
 	type: new GraphQLNonNull(GraphQLPublicItemPage),
@@ -166,19 +168,24 @@ export const searchItems = {
 		const limit = clampLimit(args.limit)
 		const offset = assertOffset(args.offset, MAX_CROSS_SHOP_OFFSET)
 
+		const match = { $text: { $search: q } }
+		const companyMatch = near ? { 'address.position': centerSphereFilter(near) } : {}
+		const sort = { score: { $meta: 'textScore' } } as const
+
 		const [docs, total] = await Promise.all([
-			liveItemsAcrossShops(
-				{ $text: { $search: q } },
-				near ? { 'address.position': centerSphereFilter(near) } : {},
-				{ score: { $meta: 'textScore' } },
-				offset,
-				limit + 1
-			),
+			liveItemsAcrossShops(match, companyMatch, sort, offset, limit + 1),
 			Item.countDocuments({ $text: trusted({ $search: q }), ...livePublic() }, { limit: COUNT_CAP })
 		])
 
-		const hasMore = docs.length > limit
-		if (hasMore) docs.pop()
+		let hasMore = docs.length > limit
+
+		// Same fallback the category listing needs, for the same reason: a fetch that came back short
+		// only proves the bounded window ran dry, not that no more live matches exist beyond it.
+		if (hasMore) {
+			docs.pop()
+		} else {
+			hasMore = await moreLiveItemsExist(match, companyMatch, sort, offset + limit)
+		}
 
 		return { nodes: docs, total, totalIsExact: false, hasMore }
 	}

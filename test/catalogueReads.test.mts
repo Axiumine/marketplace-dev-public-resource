@@ -8,7 +8,8 @@ vi.mock('@axiumine/marketplace-common/models/MongoDB/Company', () => ({ Company:
 vi.mock('@axiumine/marketplace-common/models/MongoDB/Item', () => ({ Item: { aggregate: itemAggregate } }))
 
 const { liveCompanyBySlug } = await import('../src/lib/catalogue/liveCompanyBySlug.mts')
-const { liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET, OVERFETCH } = await import('../src/lib/catalogue/liveItemsAcrossShops.mts')
+const { liveItemsAcrossShops, MAX_CROSS_SHOP_OFFSET, moreLiveItemsExist, OVERFETCH } =
+	await import('../src/lib/catalogue/liveItemsAcrossShops.mts')
 
 const idCompany = new Types.ObjectId('507f1f77bcf86cd799439011')
 const live = { published: true, deleted: trusted({ $exists: false }) }
@@ -167,6 +168,98 @@ describe('liveItemsAcrossShops', () => {
 				companyPublicName: '$company.publicName'
 			}
 		})
+		expect(pipeline).toHaveLength(8)
+	})
+})
+
+describe('moreLiveItemsExist', () => {
+	const runProbe = async (
+		hit: unknown[],
+		match: Record<string, unknown> = { idCategory: idCompany },
+		companyMatch: Record<string, unknown> = {},
+		sort: PipelineStage.Sort['$sort'] = { _id: 1 as const },
+		position = 60
+	) => {
+		itemAggregate.mockResolvedValueOnce(hit)
+
+		const result = await moreLiveItemsExist(match, companyMatch, sort, position)
+
+		return { result, pipeline: itemAggregate.mock.calls[0][0] as PipelineStage[] }
+	}
+
+	it('answers true when the probe finds a document past the position', async () => {
+		const { result } = await runProbe([{ _id: idCompany }])
+
+		expect(result).toBe(true)
+	})
+
+	it('answers false when nothing survives past the position', async () => {
+		const { result } = await runProbe([])
+
+		expect(result).toBe(false)
+	})
+
+	it('ANDs the caller’s match with the liveness pair, spelled plainly, same as the page fetch', async () => {
+		const { pipeline } = await runProbe([], { $text: { $search: 'sneaker' } })
+
+		expect(pipeline[0]).toEqual({ $match: { $text: { $search: 'sneaker' }, published: true, deleted: { $exists: false } } })
+		expect(Object.getOwnPropertySymbols((pipeline[0] as PipelineStage.Match).$match.deleted!)).toHaveLength(0)
+	})
+
+	it('uses the sort it was handed', async () => {
+		const { pipeline } = await runProbe([], { idCategory: idCompany }, {}, { score: { $meta: 'textScore' } })
+
+		expect(pipeline[1]).toEqual({ $sort: { score: { $meta: 'textScore' } } })
+	})
+
+	// ⚠️ **The `$limit` between `$sort` and `$lookup` is not a second overfetch window — MongoDB 8's
+	// planner needs *some* number to take the bounded top-k path when sorting on `{ $meta: 'textScore' }`;
+	// without one it materialises the score as an internal field and a downstream stage chokes on it
+	// (`FieldPath field names may not start with '$', given '$computed0'`). The value is chosen to be
+	// unreachable rather than small, so it never behaves like a second `OVERFETCH`.
+	it('bounds the pre-join scan at a number nothing on this platform will ever reach', async () => {
+		const { pipeline } = await runProbe([])
+
+		expect(pipeline[2]).toEqual({ $limit: Number.MAX_SAFE_INTEGER })
+	})
+
+	it('joins the shop through a filtering sub-pipeline that projects only the id', async () => {
+		const { pipeline } = await runProbe([])
+
+		expect(pipeline[1]).toEqual({ $sort: { _id: 1 } })
+		expect((pipeline[3] as PipelineStage.Lookup).$lookup).toEqual({
+			from: 'company',
+			localField: 'idCompany',
+			foreignField: '_id',
+			as: 'company',
+			pipeline: [{ $match: { published: true, deleted: { $exists: false } } }, { $project: { _id: 1 } }]
+		})
+	})
+
+	it('ANDs a company-side predicate into the sub-pipeline’s match', async () => {
+		const geo = { 'address.position': { $geoWithin: { $centerSphere: [[9.19, 45.46], 0.001] } } }
+		const { pipeline } = await runProbe([], { $text: { $search: 'sneaker' } }, geo)
+
+		expect((pipeline[3] as PipelineStage.Lookup).$lookup.pipeline![0]).toEqual({
+			$match: { ...geo, published: true, deleted: { $exists: false } }
+		})
+	})
+
+	it('unwinds without preserving the empty joins', async () => {
+		const { pipeline } = await runProbe([])
+
+		expect(pipeline[4]).toEqual({ $unwind: '$company' })
+	})
+
+	// ⚠️ `$skip` runs on the *joined* survivors, matching `liveItemsAcrossShops`' own order. A raw
+	// pre-join skip would count a different, larger set and answer a different question — whether a live
+	// item exists past `position` raw matches in, most of which the page never even showed.
+	it('skips past the joined position the caller names, then asks for exactly one more', async () => {
+		const { pipeline } = await runProbe([], { idCategory: idCompany }, {}, { _id: 1 }, 60)
+
+		expect(pipeline[5]).toEqual({ $skip: 60 })
+		expect(pipeline[6]).toEqual({ $limit: 1 })
+		expect(pipeline[7]).toEqual({ $project: { _id: 1 } })
 		expect(pipeline).toHaveLength(8)
 	})
 })

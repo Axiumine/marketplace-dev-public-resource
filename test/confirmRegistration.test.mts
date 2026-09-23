@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chain, type IChain } from './support/queryChain.mts'
 
+const redisClient = { __sentinel: 'redisClient' }
+const assertUnderRateLimit = vi.fn()
+
+vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ redisClient }))
+vi.mock('@axiumine/marketplace-common/others/assertUnderRateLimit', () => ({ assertUnderRateLimit }))
+
 const deletePendingRegistration = vi.fn()
 const pendingSlot = vi.fn()
 const readPendingRegistration = vi.fn()
@@ -195,11 +201,11 @@ describe('confirmRegistration — the guards', () => {
 	})
 
 	// koa-utils' threshold and its off-by-one convention, both kept: `requestTimes` starts at 1, so the
-	// fifth strike is the one that disposes of the record.
-	it('disposes of a record whose strikes are spent, and says so', async () => {
+	// fifth *wrong-hash* strike is the one that disposes of the record.
+	it('disposes of a record whose strikes are spent, on a further wrong guess', async () => {
 		readPendingRegistration.mockResolvedValueOnce({ ...record, requestTimes: 5 })
 
-		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow(EMAIL_CHECK_LINK)
+		await expect(confirmRegistration('anna@test.it', 'wrong')).rejects.toThrow(EMAIL_CHECK_LINK)
 
 		expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
 		expect(registrationMailer.tooMuchVerifyRequests).toHaveBeenCalledExactlyOnceWith('anna@test.it')
@@ -208,10 +214,10 @@ describe('confirmRegistration — the guards', () => {
 
 	// The ceiling is a floor test, not an equality one: `hIncrBy` is not bounded, so a record that
 	// somehow passed 5 must still be refused rather than wrap round into a valid one.
-	it('refuses a record past the ceiling as well as one on it', async () => {
+	it('refuses a record past the ceiling as well as one on it, on a wrong guess', async () => {
 		readPendingRegistration.mockResolvedValueOnce({ ...record, requestTimes: 9 })
 
-		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow(EMAIL_CHECK_LINK)
+		await expect(confirmRegistration('anna@test.it', 'wrong')).rejects.toThrow(EMAIL_CHECK_LINK)
 
 		expect(deletePendingRegistration).toHaveBeenCalledOnce()
 	})
@@ -223,6 +229,25 @@ describe('confirmRegistration — the guards', () => {
 
 		expect(registrationMailer.tooMuchVerifyRequests).not.toHaveBeenCalled()
 	})
+
+	// ⚠️ **B6, closed.** The ceiling only ever disposes of a record on a *wrong* guess — a correct hash
+	// opens the account no matter how many strikes an attacker spent on the same record beforehand, or
+	// how far past the ceiling `requestTimes` already sits. Checking the hash first is what stops
+	// somebody who knows only the address from exhausting the owner's own attempts and disposing of a
+	// still-valid registration out from under their genuine, correct click.
+	it.each([5, 6, 9])(
+		'opens the account on a correct hash however many strikes came first (requestTimes %i)',
+		async (requestTimes) => {
+			readPendingRegistration.mockResolvedValueOnce({ ...record, requestTimes })
+
+			await expect(confirmRegistration('anna@test.it', HASH)).resolves.toBeUndefined()
+
+			expect(insertMany).toHaveBeenCalledOnce()
+			expect(registrationMailer.tooMuchVerifyRequests).not.toHaveBeenCalled()
+			expect(strikePendingRegistration).not.toHaveBeenCalled()
+			expect(deletePendingRegistration).toHaveBeenCalledExactlyOnceWith(SLOT.key)
+		}
+	)
 
 	it('counts a wrong hash and names the strike it made', async () => {
 		await expect(confirmRegistration('anna@test.it', 'wrong')).rejects.toThrow(EMAIL_CHECK_LINK)
@@ -249,15 +274,55 @@ describe('confirmRegistration — the guards', () => {
 		expect(insertMany).toHaveBeenCalledOnce()
 	})
 
-	// The ceiling is checked before the hash, so a spent record is disposed of rather than earning a
-	// sixth strike and a second mail on every further guess.
-	it('checks the ceiling before it checks the hash', async () => {
+	// The ceiling is only reachable once the hash has already been found wrong, so a spent record still
+	// gets disposed of on that further wrong guess rather than earning a sixth strike and a second mail.
+	it('disposes of a spent record on a wrong guess rather than striking it again', async () => {
 		readPendingRegistration.mockResolvedValueOnce({ ...record, requestTimes: 5 })
 
 		await expect(confirmRegistration('anna@test.it', 'wrong')).rejects.toThrow(EMAIL_CHECK_LINK)
 
 		expect(registrationMailer.tooMuchVerifyRequests).toHaveBeenCalledOnce()
 		expect(strikePendingRegistration).not.toHaveBeenCalled()
+	})
+})
+
+describe('confirmRegistration — the confirm-attempt rate limit (B6)', () => {
+	it('meters the attempt before it ever touches Redis for the pending record', async () => {
+		await confirmRegistration('anna@test.it', HASH)
+
+		expect(assertUnderRateLimit).toHaveBeenCalledExactlyOnceWith(
+			redisClient,
+			'userConfirmRegistration:email',
+			'anna@test.it',
+			10,
+			3600
+		)
+		expect(assertUnderRateLimit.mock.invocationCallOrder[0]).toBeLessThan(pendingSlot.mock.invocationCallOrder[0])
+	})
+
+	// ⚠️ Separate counters per tier, the same reason `userRegister` and `shopOwnerRegister` never share
+	// one: bound to the shop-owner target, this must not spend — or be spent by — the customer's budget.
+	it('meters the shop-owner tier on its own bucket', async () => {
+		await confirmShopOwner('mark@test.it', HASH)
+
+		expect(assertUnderRateLimit).toHaveBeenCalledExactlyOnceWith(
+			redisClient,
+			'shopOwnerConfirmRegistration:email',
+			'mark@test.it',
+			10,
+			3600
+		)
+	})
+
+	// ⚠️ A `GET` a mail client follows cannot carry a Turnstile token, so a refused attempt must not reach
+	// Redis for the pending record at all — there is no captcha half here to fall back on.
+	it('reads nothing and writes nothing once the limiter refuses', async () => {
+		assertUnderRateLimit.mockRejectedValueOnce(new Error('Too Many Requests'))
+
+		await expect(confirmRegistration('anna@test.it', HASH)).rejects.toThrow('Too Many Requests')
+
+		expect(pendingSlot).not.toHaveBeenCalled()
+		expect(readPendingRegistration).not.toHaveBeenCalled()
 	})
 })
 
@@ -415,7 +480,27 @@ describe('confirmRegistration — restoring a closed account', () => {
 
 		await confirmRegistration('anna@test.it', HASH)
 
-		expect(updateOne.mock.calls[0][1].$unset).toEqual({ deleted: '', deletedBy: '' })
+		expect(updateOne.mock.calls[0][1].$unset).toEqual({
+			deleted: '',
+			deletedBy: '',
+			'resetPwd.resetHash': '',
+			'resetPwd.resetDateReq': ''
+		})
+	})
+
+	// ⚠️ **B7, closed.** A reset hash minted before the closure — by an intruder who compromised the
+	// account, or by its own owner — must not survive the restore: `getResetPwd` only ever checks the
+	// account's *current* `deleted` state, so a hash left in place would still open `userUpdatePwd` within
+	// its own 60-minute window and silently overwrite the password this very restore just set.
+	it('clears any pre-closure reset token along with the closure itself', async () => {
+		addressHeldBy(closedHolder)
+
+		await confirmRegistration('anna@test.it', HASH)
+
+		const { $unset } = updateOne.mock.calls[0][1]
+
+		expect($unset['resetPwd.resetHash']).toBe('')
+		expect($unset['resetPwd.resetDateReq']).toBe('')
 	})
 
 	// The password is the one just submitted. The person proved they can read mail at the address and

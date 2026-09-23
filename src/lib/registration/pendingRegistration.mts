@@ -22,6 +22,17 @@ export const PENDING_TTL_SECONDS = 3 * 24 * 60 * 60
  */
 export const MAX_VERIFY_ATTEMPTS = 5
 
+/**
+ * The one Redis verb `strikePendingRegistration` and `renewPendingRegistration` need beyond `hSet`,
+ * `expire` and the rest of `redisClient`'s ordinary surface, narrowed out rather than cast to either
+ * client type: `redisClient` is a union of the cluster and single-node clients, and a method both members
+ * carry is still not callable through their union in TypeScript. One key per call, so a cluster never
+ * sees a cross-slot script.
+ */
+interface IPendingRegistrationScriptStore {
+	eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>
+}
+
 /** Where one tier's pending registration for one address lives, and the address as MongoDB will store it. */
 export interface IPendingSlot {
 	/** The Redis key. One key, because a multi-key operation throws `CROSSSLOT` on a cluster. */
@@ -138,15 +149,33 @@ export async function readPendingRegistration(key: string): Promise<IPendingRegi
 }
 
 /**
+ * `strikePendingRegistration`'s one command, guarded by the one check that makes it safe to run
+ * unconditionally: `HINCRBY` on a key nobody holds any more creates it from nothing, with no TTL, so the
+ * `EXISTS` has to run in the same round trip as the increment or a deletion landing between the two wins
+ * the race and leaks the key for ever.
+ */
+const STRIKE_IF_EXISTS = `if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('HINCRBY', KEYS[1], 'requestTimes', 1)
+return 1`
+
+/**
  * Counts one wrong hash against the record.
  *
  * ⚠️ **No `EXPIRE`, deliberately** — and this is the one write that must not go through `writeRecord`.
  * Re-arming the TTL on a failed attempt would let anybody keep somebody else's pending registration alive
  * indefinitely by guessing at the link, which is the same shape of defect the old flow had on the
  * document. A wrong hash spends a strike; it does not buy time.
+ *
+ * ⚠️ **The existence check and the increment are one script, not two commands.** A plain `hIncrBy` auto-
+ * vivifies a missing key with no TTL — so a strike racing another request's successful confirm or
+ * five-strike disposal on the same key could recreate it, holding nothing but `requestTimes`, for ever.
+ * Checking `EXISTS` a moment earlier would not close that: the deletion could still land in the gap
+ * between the check and the increment. One round trip is what removes the gap.
  */
 export async function strikePendingRegistration(key: string): Promise<void> {
-	await redisClient.hIncrBy(key, 'requestTimes', 1)
+	const store = redisClient as unknown as IPendingRegistrationScriptStore
+
+	await store.eval(STRIKE_IF_EXISTS, { keys: [key], arguments: [] })
 }
 
 /** Removes a pending registration: consumed, or spent on five wrong hashes. */
@@ -155,15 +184,43 @@ export async function deletePendingRegistration(key: string): Promise<void> {
 }
 
 /**
+ * `renewPendingRegistration`'s one write, guarded the same way `STRIKE_IF_EXISTS` guards its own: the
+ * fields and the TTL land in the same round trip as the existence check, so nothing between a caller's
+ * own read and this script can still slip a deletion into the gap.
+ */
+const RENEW_IF_EXISTS = `if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], 'hash', ARGV[1], 'dateLastReq', ARGV[2], 'requestTimes', ARGV[3])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
+return 1`
+
+/**
  * Re-mints the link on an existing record: a new hash, a new window, and the strike count back to 1.
  *
  * The strikes counted attempts against the *old* hash, so clearing them with it is the honest reading —
  * the same thing koa-utils' `setEmailHash` did on the document.
  *
  * `_id`, `password` and `registeredAt` are untouched: this re-sends a registration, it does not restart
- * one. It is also why the caller must have proved the record exists — `HSET` on a missing key would build
- * a three-field record that nothing can insert.
+ * one.
+ *
+ * ⚠️ **The existence check runs in the same script as the write, not as a separate read beforehand.** A
+ * caller such as `resendRegistration` reads the record first to decide whether there is anything to renew
+ * at all — but that read and this write are two Redis round trips with no lock between them, and a
+ * confirmation landing in the gap can delete the key the read just saw. A plain `HSET` there would build a
+ * three-field ghost record — a hash with no `id`, no `email`, no `password` — that looks like a live link
+ * for the rest of the TTL and that `readPendingRegistration` cannot turn back into an account. Folding the
+ * check into the script closes the gap the caller's own read cannot: the answer this returns is current as
+ * of the write, not as of some earlier read.
+ *
+ * @returns `true` when the key was still there and was renewed, `false` when it was not — the caller's
+ * signal that there is nothing left to mail a link for.
  */
-export async function renewPendingRegistration(slot: IPendingSlot, hash: string, at: Date): Promise<void> {
-	await writeRecord(slot.key, { hash, dateLastReq: `${at.getTime()}`, requestTimes: '1' })
+export async function renewPendingRegistration(slot: IPendingSlot, hash: string, at: Date): Promise<boolean> {
+	const store = redisClient as unknown as IPendingRegistrationScriptStore
+
+	const renewed = await store.eval(RENEW_IF_EXISTS, {
+		keys: [slot.key],
+		arguments: [hash, `${at.getTime()}`, '1', `${PENDING_TTL_SECONDS}`]
+	})
+
+	return renewed === 1
 }

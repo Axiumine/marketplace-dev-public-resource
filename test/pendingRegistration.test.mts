@@ -7,7 +7,8 @@ const redisClient = {
 	expire: vi.fn(),
 	hGetAll: vi.fn(),
 	hIncrBy: vi.fn(),
-	del: vi.fn()
+	del: vi.fn(),
+	eval: vi.fn()
 }
 
 vi.mock('@axiumine/koa-utils/dataSources/Redis', () => ({ redisClient }))
@@ -225,10 +226,26 @@ describe('readPendingRegistration', () => {
 })
 
 describe('strikePendingRegistration', () => {
-	it('counts one wrong hash against the record', async () => {
+	it('counts one wrong hash against the record, through the one-round-trip script', async () => {
 		await strikePendingRegistration(slot.key)
 
-		expect(redisClient.hIncrBy).toHaveBeenCalledExactlyOnceWith(slot.key, 'requestTimes', 1)
+		expect(redisClient.eval).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('HINCRBY'), {
+			keys: [slot.key],
+			arguments: []
+		})
+	})
+
+	// ⚠️ **B20, closed.** A plain `HINCRBY` auto-vivifies a key nobody holds any more, with no TTL — the
+	// exact leak a strike racing another request's successful confirm or five-strike disposal could cause.
+	// The script's own `EXISTS` guard is what stops that, and it has to be the *same* round trip: checking
+	// existence a moment earlier would still leave a gap for the deletion to land in.
+	it('guards the increment with an existence check inside the same script', async () => {
+		await strikePendingRegistration(slot.key)
+
+		const [script] = redisClient.eval.mock.calls[0] as [string, unknown]
+
+		expect(script).toContain("redis.call('EXISTS', KEYS[1])")
+		expect(script.indexOf('EXISTS')).toBeLessThan(script.indexOf('HINCRBY'))
 	})
 
 	// ⚠️ **The assertion this module exists for.** Re-arming the TTL on a failed attempt would let
@@ -238,6 +255,17 @@ describe('strikePendingRegistration', () => {
 		await strikePendingRegistration(slot.key)
 
 		expect(redisClient.expire).not.toHaveBeenCalled()
+		expect(redisClient.hIncrBy).not.toHaveBeenCalled()
+	})
+
+	// The caller does not read a result back — a strike against a key that is already gone is simply a
+	// no-op, not a failure the caller has to branch on.
+	it('resolves whether the script struck the record or found nothing to strike', async () => {
+		redisClient.eval.mockResolvedValueOnce(0)
+		await expect(strikePendingRegistration(slot.key)).resolves.toBeUndefined()
+
+		redisClient.eval.mockResolvedValueOnce(1)
+		await expect(strikePendingRegistration(slot.key)).resolves.toBeUndefined()
 	})
 })
 
@@ -252,30 +280,61 @@ describe('deletePendingRegistration', () => {
 describe('renewPendingRegistration', () => {
 	const at = new Date('2026-08-30T09:00:00.000Z')
 
+	beforeEach(() => redisClient.eval.mockResolvedValue(1))
+
 	// The strikes counted attempts against the old hash, so they go with it — the same thing koa-utils'
 	// `setEmailHash` did on the document.
-	it('re-mints the hash, the window and the strike count', async () => {
+	it('re-mints the hash, the window and the strike count, through the one-round-trip script', async () => {
 		await renewPendingRegistration(slot, 'n'.repeat(50), at)
 
-		expect(redisClient.hSet).toHaveBeenCalledExactlyOnceWith(slot.key, {
-			hash: 'n'.repeat(50),
-			dateLastReq: `${at.getTime()}`,
-			requestTimes: '1'
+		expect(redisClient.eval).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('HSET'), {
+			keys: [slot.key],
+			arguments: ['n'.repeat(50), `${at.getTime()}`, '1', `${PENDING_TTL_SECONDS}`]
 		})
 	})
 
 	// ⚠️ A resend re-sends a registration; it does not restart one. Rewriting `id` would open the account
 	// under a different `_id` and lose the replay guard, and rewriting `password` from here would let an
-	// argument list with no password in it change one.
+	// argument list with no password in it change one. Only the three renewed fields and the TTL travel as
+	// arguments — no `id`, no `email`, no `password`.
 	it('leaves the id, the password and the submission time alone', async () => {
 		await renewPendingRegistration(slot, 'n'.repeat(50), at)
 
-		expect(Object.keys(redisClient.hSet.mock.calls[0][1])).toEqual(['hash', 'dateLastReq', 'requestTimes'])
+		expect(redisClient.eval.mock.calls[0][1].arguments).toHaveLength(4)
 	})
 
 	it('re-arms the TTL, so a resent link lives the full window', async () => {
 		await renewPendingRegistration(slot, 'n'.repeat(50), at)
 
-		expect(redisClient.expire).toHaveBeenCalledExactlyOnceWith(slot.key, PENDING_TTL_SECONDS)
+		const [script] = redisClient.eval.mock.calls[0] as [string, unknown]
+
+		expect(script).toContain(`redis.call('EXPIRE', KEYS[1], ARGV[4])`)
+		expect(redisClient.expire).not.toHaveBeenCalled()
+	})
+
+	// ⚠️ **B47, closed.** A plain `HSET` on a key deleted by a racing confirm would auto-vivify a
+	// three-field ghost record — a hash with no `id`, no `email`, no `password` — that looks like a live
+	// link for the rest of the TTL. The script's own `EXISTS` guard, run in the same round trip as the
+	// write, is what stops a caller's own separate read from being trusted with that answer.
+	it('guards the write with an existence check inside the same script', async () => {
+		await renewPendingRegistration(slot, 'n'.repeat(50), at)
+
+		const [script] = redisClient.eval.mock.calls[0] as [string, unknown]
+
+		expect(script).toContain("redis.call('EXISTS', KEYS[1])")
+		expect(script.indexOf('EXISTS')).toBeLessThan(script.indexOf('HSET'))
+	})
+
+	it('answers true when the key was there to renew', async () => {
+		redisClient.eval.mockResolvedValueOnce(1)
+
+		await expect(renewPendingRegistration(slot, 'n'.repeat(50), at)).resolves.toBe(true)
+	})
+
+	// The caller's own signal that there was nothing left to renew — see `resendRegistration`.
+	it('answers false when the script found no key to renew', async () => {
+		redisClient.eval.mockResolvedValueOnce(0)
+
+		await expect(renewPendingRegistration(slot, 'n'.repeat(50), at)).resolves.toBe(false)
 	})
 })

@@ -29,6 +29,7 @@ every pull request — two callers, both automated, and a hand is neither.
   missing test. Bypasses (`SKIP_QODANA=1`, `--no-verify`) are gate removals: use only when the user says so.
 - Two spaces, not tabs. Prettier alone enforces it (`useTabs: false`, `tabWidth: 2`); eslint has no indent rule on the tree.
 - English only — identifiers, comments, fixtures. No exception.
+- `osv-scanner.toml` ignores `GHSA-vfj7-8cjw-p6xm` (braces, dev toolchain only) until 2027-01-15 under ADR-057. The entry expires on purpose, so the Scorecard Vulnerabilities check fails again then; delete it as soon as a patched braces exists.
 - Domain query/mutation → **resource** svc. Token lifecycle → **authorization** svc.
 
 ## GitNexus

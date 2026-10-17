@@ -27,16 +27,16 @@ export const ITEST_REDIS_KEY = 'marketplaceDev:itest:publicResource:'
  * this run believes it wrote whole.
  */
 export async function seedKeygripRecord(): Promise<void> {
-	await RedisConnect()
-	try {
-		await redisClient.del(`${ITEST_REDIS_KEY}keygrip`)
-		await redisClient.hSet(`${ITEST_REDIS_KEY}keygrip`, {
-			version: '1',
-			wrapped: Buffer.alloc(64, 7).toString('base64'),
-			fp: 'itest'
-		})
-	} finally {
-		// This process only provisions; every test file opens its own client.
-		await redisClient.close().catch(() => undefined)
-	}
+  await RedisConnect()
+  try {
+    await redisClient.del(`${ITEST_REDIS_KEY}keygrip`)
+    await redisClient.hSet(`${ITEST_REDIS_KEY}keygrip`, {
+      version: '1',
+      wrapped: Buffer.alloc(64, 7).toString('base64'),
+      fp: 'itest'
+    })
+  } finally {
+    // This process only provisions; every test file opens its own client.
+    await redisClient.close().catch(() => undefined)
+  }
 }

@@ -19,10 +19,10 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType } from 'graphql'
  * GraphQL type belongs to exactly one schema.
  */
 export const GraphQLPublicItemCategory = new GraphQLObjectType({
-	name: 'GraphQLPublicItemCategory',
-	fields: () => ({
-		_id: { type: new GraphQLNonNull(GraphQLID) },
-		idParent: { type: GraphQLID },
-		...GraphQLItemCategoryFrag
-	})
+  name: 'GraphQLPublicItemCategory',
+  fields: () => ({
+    _id: { type: new GraphQLNonNull(GraphQLID) },
+    idParent: { type: GraphQLID },
+    ...GraphQLItemCategoryFrag
+  })
 })

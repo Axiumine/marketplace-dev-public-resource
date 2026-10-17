@@ -25,21 +25,21 @@ import { GraphQLError } from 'graphql'
  * exists to stop telling.
  */
 export const updatePwd = {
-	description: boundUpdatePwd.description,
-	type: boundUpdatePwd.type,
-	args: boundUpdatePwd.args,
-	async resolve(source: unknown, args: IUpdatePasswordArgs) {
-		const changed = await boundUpdatePwd.resolve(source, args)
+  description: boundUpdatePwd.description,
+  type: boundUpdatePwd.type,
+  args: boundUpdatePwd.args,
+  async resolve(source: unknown, args: IUpdatePasswordArgs) {
+    const changed = await boundUpdatePwd.resolve(source, args)
 
-		try {
-			// Normalised the same way the delegate normalises it — `email.trim().toLowerCase()` inside
-			// `updatePassword.resolve` — because the address that was matched is the address whose sessions
-			// must go. Handed the raw argument, a stray capital would read a document that does not exist.
-			await endEverySessionShopOwner(args.email.toLowerCase().trim())
-		} catch (e) {
-			tryCatchRethrow(e as GraphQLError | Error)
-		}
+    try {
+      // Normalised the same way the delegate normalises it — `email.trim().toLowerCase()` inside
+      // `updatePassword.resolve` — because the address that was matched is the address whose sessions
+      // must go. Handed the raw argument, a stray capital would read a document that does not exist.
+      await endEverySessionShopOwner(args.email.toLowerCase().trim())
+    } catch (e) {
+      tryCatchRethrow(e as GraphQLError | Error)
+    }
 
-		return changed
-	}
+    return changed
+  }
 }

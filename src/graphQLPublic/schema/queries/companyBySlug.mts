@@ -6,7 +6,7 @@ import { GraphQLNonNull, GraphQLString } from 'graphql'
 import { PUBLIC_COMPANY_PROJECTION } from './companies.mjs'
 
 interface IArgs {
-	slug: string
+  slug: string
 }
 
 /**
@@ -26,12 +26,12 @@ interface IArgs {
  * wants: a link that used to be a shop must not silently become a different shop.
  */
 export const companyBySlug = {
-	type: GraphQLPublicCompany,
-	description: 'Get one published company by its slug, or null',
-	args: {
-		slug: { type: new GraphQLNonNull(GraphQLString) }
-	},
-	async resolve(_: unknown, args: IArgs) {
-		return await Company.findOne({ slug: args.slug, ...livePublic() }, PUBLIC_COMPANY_PROJECTION).lean()
-	}
+  type: GraphQLPublicCompany,
+  description: 'Get one published company by its slug, or null',
+  args: {
+    slug: { type: new GraphQLNonNull(GraphQLString) }
+  },
+  async resolve(_: unknown, args: IArgs) {
+    return await Company.findOne({ slug: args.slug, ...livePublic() }, PUBLIC_COMPANY_PROJECTION).lean()
+  }
 }

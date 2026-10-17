@@ -13,37 +13,37 @@ import { userUpdatePwd } from './mutations/userUpdatePwd.mjs'
 import { userVerifyEmailResend } from './mutations/userVerifyEmailResend.mjs'
 
 const MutationsPublic = new GraphQLObjectType({
-	name: 'MutationsPublic',
-	fields: {
-		publicMutArgs,
-		publicMutNoArgs,
-		// ⚠️ The ShopOwner pair. `resetPwd` mails a link on `APP_DOMAIN`; the customer pair below mails one
-		// on `APP_DOMAIN_USER`. Two fields rather than one flow choosing at runtime because it cannot:
-		// `user` and `shopOwner` are two collections, and an email plus a hash says nothing about which.
-		//
-		// ⚠️ `resetPwd` is the bound flow itself; `updatePwd` is a local wrapper around it. The wrapper adds
-		// one thing and changes nothing else: a successful reset now ends every session the account holds,
-		// which the flow alone never did. Wiring the bound `updatePwd` straight in again would silently drop
-		// that, and nothing in the schema would look different.
-		resetPwd,
-		updatePwd,
-		// ⚠️ Only the mutations below are behind the Turnstile + rate-limit guard. `resetPwd` and
-		// `updatePwd` above are not, and neither are `login` / `loginAdmin` on 4028 — both shipped
-		// frontends call them today and send no token, so gating them would break the admin and
-		// shop-owner apps on deploy. Adding the gate there is a coordinated change: the frontend has to
-		// mint a token first. These have no such constraint because no shipped frontend calls them yet,
-		// so they are born with the gate on.
-		//
-		// ⚠️ `shopOwnerRegister` is a seller *asking* to sell here, not becoming one: it writes
-		// `waitApprov` and the account cannot log in until an admin clears it. The Admin service's
-		// `shopOwnerAdd` writes no such flag, because an admin creating an account has approved it by
-		// creating it. Do not "harmonise" the two.
-		shopOwnerRegister,
-		userRegister,
-		userResetPwd,
-		userUpdatePwd,
-		userVerifyEmailResend
-	}
+  name: 'MutationsPublic',
+  fields: {
+    publicMutArgs,
+    publicMutNoArgs,
+    // ⚠️ The ShopOwner pair. `resetPwd` mails a link on `APP_DOMAIN`; the customer pair below mails one
+    // on `APP_DOMAIN_USER`. Two fields rather than one flow choosing at runtime because it cannot:
+    // `user` and `shopOwner` are two collections, and an email plus a hash says nothing about which.
+    //
+    // ⚠️ `resetPwd` is the bound flow itself; `updatePwd` is a local wrapper around it. The wrapper adds
+    // one thing and changes nothing else: a successful reset now ends every session the account holds,
+    // which the flow alone never did. Wiring the bound `updatePwd` straight in again would silently drop
+    // that, and nothing in the schema would look different.
+    resetPwd,
+    updatePwd,
+    // ⚠️ Only the mutations below are behind the Turnstile + rate-limit guard. `resetPwd` and
+    // `updatePwd` above are not, and neither are `login` / `loginAdmin` on 4028 — both shipped
+    // frontends call them today and send no token, so gating them would break the admin and
+    // shop-owner apps on deploy. Adding the gate there is a coordinated change: the frontend has to
+    // mint a token first. These have no such constraint because no shipped frontend calls them yet,
+    // so they are born with the gate on.
+    //
+    // ⚠️ `shopOwnerRegister` is a seller *asking* to sell here, not becoming one: it writes
+    // `waitApprov` and the account cannot log in until an admin clears it. The Admin service's
+    // `shopOwnerAdd` writes no such flag, because an admin creating an account has approved it by
+    // creating it. Do not "harmonise" the two.
+    shopOwnerRegister,
+    userRegister,
+    userResetPwd,
+    userUpdatePwd,
+    userVerifyEmailResend
+  }
 })
 
 export default MutationsPublic

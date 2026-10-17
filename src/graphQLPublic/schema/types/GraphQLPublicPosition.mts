@@ -15,8 +15,8 @@ import { GraphQLObjectType } from 'graphql'
  * the three.
  */
 export const GraphQLPublicPosition = new GraphQLObjectType({
-	name: 'GraphQLPublicPosition',
-	fields: () => ({
-		...GraphQLPositionFrag
-	})
+  name: 'GraphQLPublicPosition',
+  fields: () => ({
+    ...GraphQLPositionFrag
+  })
 })

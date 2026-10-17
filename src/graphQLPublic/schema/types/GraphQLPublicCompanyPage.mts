@@ -19,11 +19,11 @@ import { GraphQLBoolean, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectT
  * when `total` is not — which is what makes deep pagination behave correctly past the cap.
  */
 export const GraphQLPublicCompanyPage = new GraphQLObjectType({
-	name: 'GraphQLPublicCompanyPage',
-	fields: () => ({
-		nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicCompany))) },
-		total: { type: new GraphQLNonNull(GraphQLInt) },
-		totalIsExact: { type: new GraphQLNonNull(GraphQLBoolean) },
-		hasMore: { type: new GraphQLNonNull(GraphQLBoolean) }
-	})
+  name: 'GraphQLPublicCompanyPage',
+  fields: () => ({
+    nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicCompany))) },
+    total: { type: new GraphQLNonNull(GraphQLInt) },
+    totalIsExact: { type: new GraphQLNonNull(GraphQLBoolean) },
+    hasMore: { type: new GraphQLNonNull(GraphQLBoolean) }
+  })
 })

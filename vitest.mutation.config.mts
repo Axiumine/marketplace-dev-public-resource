@@ -27,28 +27,28 @@ import { nodeNextResolver } from './vitest.shared.mts'
 const inlineDeps = [/graphql/, /@apollo\/server/, /@as-integrations/, /@axiumine\/koa-utils/, /@axiumine\/marketplace-common/]
 
 export default defineConfig({
-	plugins: [nodeNextResolver],
-	resolve: { dedupe: ['graphql'] },
-	test: {
-		include: ['test/*.test.mts'],
-		server: { deps: { inline: inlineDeps } },
-		// vitest.testNames.mts caps how long a test's full name may be — the mutation gate
-		// selects tests by name, and past a size it cannot; see the file.
-		setupFiles: ['./vitest.testNames.mts'],
-		// The `unit` project in vitest.config.mts sets no explicit testTimeout (vitest's 5s
-		// default). Stryker's instrumented mutants run slower than the original code, so the
-		// same 5s can spuriously time out a still-correct test under an inert mutant — that
-		// would report a false Survived (test errored, not "test caught nothing"), not a real
-		// kill/miss signal. 30s matches the headroom already given to the integration project.
-		testTimeout: 30_000,
-		// Same as the `unit` project: set before the sources call `dotenv.config()`,
-		// which does not override keys already present in process.env.
-		env: {
-			NODE_ENV: 'test',
-			REDIS_IS_CLUSTER: '0',
-			REDIS_URL: 'redis://127.0.0.1:6379',
-			REDIS_KEY: 'test:',
-			MONGODB_URI: 'mongodb://127.0.0.1:27017/test'
-		}
-	}
+  plugins: [nodeNextResolver],
+  resolve: { dedupe: ['graphql'] },
+  test: {
+    include: ['test/*.test.mts'],
+    server: { deps: { inline: inlineDeps } },
+    // vitest.testNames.mts caps how long a test's full name may be — the mutation gate
+    // selects tests by name, and past a size it cannot; see the file.
+    setupFiles: ['./vitest.testNames.mts'],
+    // The `unit` project in vitest.config.mts sets no explicit testTimeout (vitest's 5s
+    // default). Stryker's instrumented mutants run slower than the original code, so the
+    // same 5s can spuriously time out a still-correct test under an inert mutant — that
+    // would report a false Survived (test errored, not "test caught nothing"), not a real
+    // kill/miss signal. 30s matches the headroom already given to the integration project.
+    testTimeout: 30_000,
+    // Same as the `unit` project: set before the sources call `dotenv.config()`,
+    // which does not override keys already present in process.env.
+    env: {
+      NODE_ENV: 'test',
+      REDIS_IS_CLUSTER: '0',
+      REDIS_URL: 'redis://127.0.0.1:6379',
+      REDIS_KEY: 'test:',
+      MONGODB_URI: 'mongodb://127.0.0.1:27017/test'
+    }
+  }
 })

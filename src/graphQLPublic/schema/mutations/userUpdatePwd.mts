@@ -10,7 +10,7 @@ import { GraphQLError, GraphQLNonNull, GraphQLString } from 'graphql'
 const PER_EMAIL_PER_HOUR = 10
 
 export interface IUserUpdatePwdArgs extends IUpdatePasswordArgs {
-	turnstileToken?: string
+  turnstileToken?: string
 }
 
 /**
@@ -33,37 +33,37 @@ export interface IUserUpdatePwdArgs extends IUpdatePasswordArgs {
  * reached.
  */
 export const userUpdatePwd = {
-	description: "Confirm a customer's password reset",
-	type: boundUpdatePwd.type,
-	args: {
-		email: { type: new GraphQLNonNull(GraphQLString) },
-		hash: { type: new GraphQLNonNull(GraphQLString) },
-		password: { type: new GraphQLNonNull(GraphQLString) },
-		turnstileToken: { type: GraphQLString }
-	},
-	async resolve(source: unknown, args: IUserUpdatePwdArgs) {
-		const { email, turnstileToken } = args
+  description: "Confirm a customer's password reset",
+  type: boundUpdatePwd.type,
+  args: {
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    hash: { type: new GraphQLNonNull(GraphQLString) },
+    password: { type: new GraphQLNonNull(GraphQLString) },
+    turnstileToken: { type: GraphQLString }
+  },
+  async resolve(source: unknown, args: IUserUpdatePwdArgs) {
+    const { email, turnstileToken } = args
 
-		const uEmail = email.toLowerCase().trim()
-		checkEmailLen(uEmail)
+    const uEmail = email.toLowerCase().trim()
+    checkEmailLen(uEmail)
 
-		await guardPublicWrite({
-			bucket: 'userUpdatePwd',
-			email: uEmail,
-			turnstileToken,
-			perEmailPerHour: PER_EMAIL_PER_HOUR
-		})
+    await guardPublicWrite({
+      bucket: 'userUpdatePwd',
+      email: uEmail,
+      turnstileToken,
+      perEmailPerHour: PER_EMAIL_PER_HOUR
+    })
 
-		const changed = await boundUpdatePwd.resolve(source, args)
+    const changed = await boundUpdatePwd.resolve(source, args)
 
-		try {
-			// The address is already normalised — the same normalisation the delegate applies internally —
-			// so the read below matches the document the write just landed on.
-			await endEverySessionUser(uEmail)
-		} catch (e) {
-			tryCatchRethrow(e as GraphQLError | Error)
-		}
+    try {
+      // The address is already normalised — the same normalisation the delegate applies internally —
+      // so the read below matches the document the write just landed on.
+      await endEverySessionUser(uEmail)
+    } catch (e) {
+      tryCatchRethrow(e as GraphQLError | Error)
+    }
 
-		return changed
-	}
+    return changed
+  }
 }

@@ -31,21 +31,21 @@ import { type IRegistrationTarget, REGISTRATION_TARGET_USER } from '@lib/registr
  * attempts against a hash that no longer opens anything.
  */
 export const createResendRegistration = (target: IRegistrationTarget) =>
-	async function resendRegistration(uEmail: string): Promise<void> {
-		const slot = await pendingSlot(target, uEmail)
+  async function resendRegistration(uEmail: string): Promise<void> {
+    const slot = await pendingSlot(target, uEmail)
 
-		if ((await readPendingRegistration(slot.key)) === null) {
-			return
-		}
+    if ((await readPendingRegistration(slot.key)) === null) {
+      return
+    }
 
-		const hash = emailHash()
+    const hash = emailHash()
 
-		if (!(await renewPendingRegistration(slot, hash, new Date()))) {
-			return
-		}
+    if (!(await renewPendingRegistration(slot, hash, new Date()))) {
+      return
+    }
 
-		await target.sendVerifyEmail(uEmail, hash)
-	}
+    await target.sendVerifyEmail(uEmail, hash)
+  }
 
 /**
  * Bound to `user`.

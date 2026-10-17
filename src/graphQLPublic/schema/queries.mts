@@ -29,20 +29,20 @@ import { sitemapEntries } from './queries/sitemapEntries.mjs'
  * The two demo queries predate all of it and stay as the smoke test that the endpoint is mounted.
  */
 const QueriesPublic = new GraphQLObjectType({
-	name: 'QueriesPublic',
-	fields: {
-		publicHelloNoArgs,
-		publicHelloArgs,
-		companies,
-		companyBySlug,
-		companiesNearby,
-		items,
-		itemBySlug,
-		itemCategories,
-		searchCompanies,
-		searchItems,
-		sitemapEntries
-	}
+  name: 'QueriesPublic',
+  fields: {
+    publicHelloNoArgs,
+    publicHelloArgs,
+    companies,
+    companyBySlug,
+    companiesNearby,
+    items,
+    itemBySlug,
+    itemCategories,
+    searchCompanies,
+    searchItems,
+    sitemapEntries
+  }
 })
 
 export default QueriesPublic

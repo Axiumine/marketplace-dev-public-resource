@@ -9,14 +9,14 @@ import { trusted, Types } from 'mongoose'
 type Kind = 'COMPANY' | 'ITEM' | 'CATEGORY'
 
 interface IArgs {
-	kind: Kind
-	afterId?: string | null
-	limit?: number | null
+  kind: Kind
+  afterId?: string | null
+  limit?: number | null
 }
 
 interface IPage {
-	nodes: { path: string }[]
-	nextAfterId: Types.ObjectId | null
+  nodes: { path: string }[]
+  nextAfterId: Types.ObjectId | null
 }
 
 /**
@@ -60,43 +60,43 @@ const DEFAULT_SITEMAP_LIMIT = 1_000
  * which in a sitemap reads as "the site has no pages".
  */
 export const sitemapEntries = {
-	type: new GraphQLNonNull(GraphQLSitemapPage),
-	description: 'Get crawlable paths of one kind, keyset paginated by _id',
-	args: {
-		kind: { type: new GraphQLNonNull(GraphQLSitemapKind) },
-		afterId: { type: GraphQLID },
-		limit: { type: GraphQLInt }
-	},
-	async resolve(_: unknown, args: IArgs): Promise<IPage> {
-		const requested = args.limit ?? DEFAULT_SITEMAP_LIMIT
-		// `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
-		// `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
-		const limit = Math.min(Math.max(requested, 1), MAX_SITEMAP_LIMIT)
-		const afterId = args.afterId ? assertObjectId(args.afterId, 'afterId') : undefined
+  type: new GraphQLNonNull(GraphQLSitemapPage),
+  description: 'Get crawlable paths of one kind, keyset paginated by _id',
+  args: {
+    kind: { type: new GraphQLNonNull(GraphQLSitemapKind) },
+    afterId: { type: GraphQLID },
+    limit: { type: GraphQLInt }
+  },
+  async resolve(_: unknown, args: IArgs): Promise<IPage> {
+    const requested = args.limit ?? DEFAULT_SITEMAP_LIMIT
+    // `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
+    // `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
+    const limit = Math.min(Math.max(requested, 1), MAX_SITEMAP_LIMIT)
+    const afterId = args.afterId ? assertObjectId(args.afterId, 'afterId') : undefined
 
-		if (args.kind === 'COMPANY') return await companyPaths(afterId, limit)
-		if (args.kind === 'ITEM') return await itemPaths(afterId, limit)
+    if (args.kind === 'COMPANY') return await companyPaths(afterId, limit)
+    if (args.kind === 'ITEM') return await itemPaths(afterId, limit)
 
-		return await categoryPaths(afterId, limit)
-	}
+    return await categoryPaths(afterId, limit)
+  }
 }
 
 /** `_id > afterId`, or nothing on the first call. Kept in one place so the three walks agree. */
 function after(afterId?: Types.ObjectId) {
-	return afterId ? { _id: trusted({ $gt: afterId }) } : {}
+  return afterId ? { _id: trusted({ $gt: afterId }) } : {}
 }
 
 async function companyPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
-	const docs = await Company.find({ ...livePublic(), ...after(afterId) }, '_id slug')
-		.sort({ _id: 1 })
-		.limit(limit)
-		.lean<{ _id: Types.ObjectId; slug: string }[]>()
+  const docs = await Company.find({ ...livePublic(), ...after(afterId) }, '_id slug')
+    .sort({ _id: 1 })
+    .limit(limit)
+    .lean<{ _id: Types.ObjectId; slug: string }[]>()
 
-	return {
-		nodes: docs.map((doc) => ({ path: `/shop/${doc.slug}` })),
-		// Nothing is dropped after the fetch on this walk, so a short page really does mean the end.
-		nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
-	}
+  return {
+    nodes: docs.map((doc) => ({ path: `/shop/${doc.slug}` })),
+    // Nothing is dropped after the fetch on this walk, so a short page really does mean the end.
+    nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
+  }
 }
 
 /**
@@ -112,42 +112,42 @@ async function companyPaths(afterId: Types.ObjectId | undefined, limit: number):
  * re-read the same window forever.
  */
 async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
-	const [facet] = await Item.aggregate<{
-		docs: { slug: string; companySlug: string }[]
-		scanned: { n: number }[]
-		tail: { maxId: Types.ObjectId }[]
-	}>([
-		{ $match: { ...LIVE_PUBLIC_PIPELINE, ...(afterId ? { _id: { $gt: afterId } } : {}) } },
-		{ $sort: { _id: 1 } },
-		{ $limit: limit },
-		{
-			$facet: {
-				docs: [
-					{
-						$lookup: {
-							from: 'company',
-							localField: 'idCompany',
-							foreignField: '_id',
-							as: 'company',
-							pipeline: [{ $match: LIVE_PUBLIC_PIPELINE }, { $project: { slug: 1 } }]
-						}
-					},
-					// No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
-					{ $unwind: '$company' },
-					{ $project: { _id: 0, slug: 1, companySlug: '$company.slug' } }
-				],
-				scanned: [{ $count: 'n' }],
-				tail: [{ $group: { _id: null, maxId: { $max: '$_id' } } }]
-			}
-		}
-	])
+  const [facet] = await Item.aggregate<{
+    docs: { slug: string; companySlug: string }[]
+    scanned: { n: number }[]
+    tail: { maxId: Types.ObjectId }[]
+  }>([
+    { $match: { ...LIVE_PUBLIC_PIPELINE, ...(afterId ? { _id: { $gt: afterId } } : {}) } },
+    { $sort: { _id: 1 } },
+    { $limit: limit },
+    {
+      $facet: {
+        docs: [
+          {
+            $lookup: {
+              from: 'company',
+              localField: 'idCompany',
+              foreignField: '_id',
+              as: 'company',
+              pipeline: [{ $match: LIVE_PUBLIC_PIPELINE }, { $project: { slug: 1 } }]
+            }
+          },
+          // No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
+          { $unwind: '$company' },
+          { $project: { _id: 0, slug: 1, companySlug: '$company.slug' } }
+        ],
+        scanned: [{ $count: 'n' }],
+        tail: [{ $group: { _id: null, maxId: { $max: '$_id' } } }]
+      }
+    }
+  ])
 
-	const scanned = facet.scanned[0]?.n ?? 0
+  const scanned = facet.scanned[0]?.n ?? 0
 
-	return {
-		nodes: facet.docs.map((doc) => ({ path: `/shop/${doc.companySlug}/item/${doc.slug}` })),
-		nextAfterId: scanned === limit ? facet.tail[0].maxId : null
-	}
+  return {
+    nodes: facet.docs.map((doc) => ({ path: `/shop/${doc.companySlug}/item/${doc.slug}` })),
+    nextAfterId: scanned === limit ? facet.tail[0].maxId : null
+  }
 }
 
 /**
@@ -161,35 +161,35 @@ async function itemPaths(afterId: Types.ObjectId | undefined, limit: number): Pr
  * then short, which is why the cursor comes from the scanned documents here too.
  */
 async function categoryPaths(afterId: Types.ObjectId | undefined, limit: number): Promise<IPage> {
-	const live = { deleted: trusted({ $exists: false }) }
+  const live = { deleted: trusted({ $exists: false }) }
 
-	const docs = await ItemCategory.find({ ...live, ...after(afterId) }, '_id slug idParent')
-		.sort({ _id: 1 })
-		.limit(limit)
-		.lean<{ _id: Types.ObjectId; slug: string; idParent?: Types.ObjectId }[]>()
+  const docs = await ItemCategory.find({ ...live, ...after(afterId) }, '_id slug idParent')
+    .sort({ _id: 1 })
+    .limit(limit)
+    .lean<{ _id: Types.ObjectId; slug: string; idParent?: Types.ObjectId }[]>()
 
-	const parentIds = docs.filter((doc) => doc.idParent).map((doc) => doc.idParent!)
-	const parents = parentIds.length
-		? await ItemCategory.find({ _id: trusted({ $in: parentIds }), ...live }, '_id slug').lean<
-				{ _id: Types.ObjectId; slug: string }[]
-			>()
-		: []
+  const parentIds = docs.filter((doc) => doc.idParent).map((doc) => doc.idParent!)
+  const parents = parentIds.length
+    ? await ItemCategory.find({ _id: trusted({ $in: parentIds }), ...live }, '_id slug').lean<
+        { _id: Types.ObjectId; slug: string }[]
+      >()
+    : []
 
-	const parentSlugById = new Map(parents.map((parent) => [parent._id.toString(), parent.slug]))
+  const parentSlugById = new Map(parents.map((parent) => [parent._id.toString(), parent.slug]))
 
-	const nodes = docs
-		.map((doc) => {
-			if (!doc.idParent) return `/category/${doc.slug}`
+  const nodes = docs
+    .map((doc) => {
+      if (!doc.idParent) return `/category/${doc.slug}`
 
-			const parentSlug = parentSlugById.get(doc.idParent.toString())
+      const parentSlug = parentSlugById.get(doc.idParent.toString())
 
-			return parentSlug ? `/category/${parentSlug}/${doc.slug}` : null
-		})
-		.filter((path): path is string => path !== null)
-		.map((path) => ({ path }))
+      return parentSlug ? `/category/${parentSlug}/${doc.slug}` : null
+    })
+    .filter((path): path is string => path !== null)
+    .map((path) => ({ path }))
 
-	return {
-		nodes,
-		nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
-	}
+  return {
+    nodes,
+    nextAfterId: docs.length === limit ? docs[docs.length - 1]._id : null
+  }
 }

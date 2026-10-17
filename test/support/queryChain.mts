@@ -14,25 +14,25 @@ import { expect, Mock, vi } from 'vitest'
 
 /** A mongoose `Query`, mocked as the fluent object it is: every link returns itself, `lean` resolves. */
 export interface IChain {
-	sort: Mock
-	skip: Mock
-	limit: Mock
-	session: Mock
-	lean: Mock
+  sort: Mock
+  skip: Mock
+  limit: Mock
+  session: Mock
+  lean: Mock
 }
 
 export const chain = (docs: unknown): IChain => {
-	const self = {} as IChain
+  const self = {} as IChain
 
-	self.sort = vi.fn(() => self)
-	self.skip = vi.fn(() => self)
-	self.limit = vi.fn(() => self)
-	// The registration reads carry a `session`; the public ones never do. One link serves both, and a
-	// suite that cares which asserts on the mock rather than on the chain's shape.
-	self.session = vi.fn(() => self)
-	self.lean = vi.fn(async () => docs)
+  self.sort = vi.fn(() => self)
+  self.skip = vi.fn(() => self)
+  self.limit = vi.fn(() => self)
+  // The registration reads carry a `session`; the public ones never do. One link serves both, and a
+  // suite that cares which asserts on the mock rather than on the chain's shape.
+  self.session = vi.fn(() => self)
+  self.lean = vi.fn(async () => docs)
 
-	return self
+  return self
 }
 
 /**
@@ -55,7 +55,7 @@ export const live = { published: true, deleted: trusted({ $exists: false }) }
  * server.
  */
 export const expectTombstoneFilter = (filter: Record<string, Record<string | symbol, unknown>>): void => {
-	expect(Object.keys(filter)).toEqual(['deleted'])
-	expect(filter.deleted.$exists).toBe(false)
-	expect(filter.deleted[TRUSTED]).toBe(true)
+  expect(Object.keys(filter)).toEqual(['deleted'])
+  expect(filter.deleted.$exists).toBe(false)
+  expect(filter.deleted[TRUSTED]).toBe(true)
 }

@@ -30,7 +30,7 @@ import { trusted, Types } from 'mongoose'
  * plainly, and every one of them says so at the call site.
  */
 export function livePublic() {
-	return { published: true, deleted: trusted({ $exists: false }) }
+  return { published: true, deleted: trusted({ $exists: false }) }
 }
 
 /** The same two predicates for an aggregation `$match`, where `trusted()` must not appear. */
@@ -91,9 +91,9 @@ export const COUNT_CAP = 5_000
  * comparison to flip, and its own mutants (`min` ↔ `max`) are both killed by the tests below.
  */
 export function clampLimit(limit?: number | null): number {
-	if (limit === undefined || limit === null) return DEFAULT_LIMIT
+  if (limit === undefined || limit === null) return DEFAULT_LIMIT
 
-	return Math.min(Math.max(limit, 1), MAX_LIMIT)
+  return Math.min(Math.max(limit, 1), MAX_LIMIT)
 }
 
 /**
@@ -114,17 +114,17 @@ export function clampLimit(limit?: number | null): number {
  * omitted offset into `NaN` and is killed by the tests below.
  */
 export function assertOffset(offset?: number | null, max: number = MAX_OFFSET): number {
-	const requested = offset ?? 0
+  const requested = offset ?? 0
 
-	if (requested > max) {
-		throw new Error(
-			`offset must not exceed ${max}. Narrow the listing with a city or a category filter, or use sitemapEntries, which is keyset paginated and has no such limit.`
-		)
-	}
+  if (requested > max) {
+    throw new Error(
+      `offset must not exceed ${max}. Narrow the listing with a city or a category filter, or use sitemapEntries, which is keyset paginated and has no such limit.`
+    )
+  }
 
-	// Same reason as `clampLimit`: `offset < 0 ? 0 : offset` and `offset <= 0 ? 0 : offset` both
-	// answer 0 at zero, so the comparison form carries an unkillable mutant. `Math.max` has none.
-	return Math.max(requested, 0)
+  // Same reason as `clampLimit`: `offset < 0 ? 0 : offset` and `offset <= 0 ? 0 : offset` both
+  // answer 0 at zero, so the comparison form carries an unkillable mutant. `Math.max` has none.
+  return Math.max(requested, 0)
 }
 
 /**
@@ -136,9 +136,9 @@ export function assertOffset(offset?: number | null, max: number = MAX_OFFSET): 
  * a sentence instead, and throws it before any query is built.
  */
 export function assertObjectId(value: string, name: string): Types.ObjectId {
-	if (!Types.ObjectId.isValid(value)) {
-		throw new Error(`${name} is not a valid id`)
-	}
+  if (!Types.ObjectId.isValid(value)) {
+    throw new Error(`${name} is not a valid id`)
+  }
 
-	return new Types.ObjectId(value)
+  return new Types.ObjectId(value)
 }

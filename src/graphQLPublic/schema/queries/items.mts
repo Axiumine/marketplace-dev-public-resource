@@ -1,10 +1,10 @@
 import { Item } from '@axiumine/marketplace-common/models/MongoDB/Item'
 import { liveCompanyBySlug } from '@lib/catalogue/liveCompanyBySlug.mjs'
 import {
-	IItemHit,
-	liveItemsAcrossShops,
-	MAX_CROSS_SHOP_OFFSET,
-	moreLiveItemsExist
+  IItemHit,
+  liveItemsAcrossShops,
+  MAX_CROSS_SHOP_OFFSET,
+  moreLiveItemsExist
 } from '@lib/catalogue/liveItemsAcrossShops.mjs'
 import { assertObjectId, assertOffset, clampLimit, COUNT_CAP, livePublic } from '@lib/catalogue/publicRead.mjs'
 import { GraphQLPublicItemPage } from '@ptypes/GraphQLPublicItemPage.mjs'
@@ -13,19 +13,19 @@ import { GraphQLNonNull } from 'graphql'
 import { Types } from 'mongoose'
 
 interface IArgs {
-	companySlug?: string | null
-	idCategory?: string | null
-	limit?: number | null
-	offset?: number | null
+  companySlug?: string | null
+  idCategory?: string | null
+  limit?: number | null
+  offset?: number | null
 }
 
 /** What the shop-page path reads off `item`; the shop's own two fields are added from the company. */
 interface IShopItemDoc {
-	_id: Types.ObjectId
-	idCategory: Types.ObjectId
-	name: string
-	description: string
-	slug: string
+  _id: Types.ObjectId
+  idCategory: Types.ObjectId
+  name: string
+  description: string
+  slug: string
 }
 
 const EMPTY_PAGE = { nodes: [] as IItemHit[], total: 0, totalIsExact: true, hasMore: false }
@@ -56,90 +56,90 @@ const EMPTY_PAGE = { nodes: [] as IItemHit[], total: 0, totalIsExact: true, hasM
  * it; `_id` is at least the order the index already produces.
  */
 export const items = {
-	type: new GraphQLNonNull(GraphQLPublicItemPage),
-	description: 'Get published items of one company, or of one category across every company',
-	args: {
-		companySlug: { type: GraphQLString },
-		idCategory: { type: GraphQLID },
-		limit: { type: GraphQLInt },
-		offset: { type: GraphQLInt }
-	},
-	async resolve(_: unknown, args: IArgs) {
-		if (!args.companySlug && !args.idCategory) {
-			throw new Error('Pass companySlug, idCategory, or both')
-		}
+  type: new GraphQLNonNull(GraphQLPublicItemPage),
+  description: 'Get published items of one company, or of one category across every company',
+  args: {
+    companySlug: { type: GraphQLString },
+    idCategory: { type: GraphQLID },
+    limit: { type: GraphQLInt },
+    offset: { type: GraphQLInt }
+  },
+  async resolve(_: unknown, args: IArgs) {
+    if (!args.companySlug && !args.idCategory) {
+      throw new Error('Pass companySlug, idCategory, or both')
+    }
 
-		const limit = clampLimit(args.limit)
-		const idCategory = args.idCategory ? assertObjectId(args.idCategory, 'idCategory') : undefined
+    const limit = clampLimit(args.limit)
+    const idCategory = args.idCategory ? assertObjectId(args.idCategory, 'idCategory') : undefined
 
-		if (args.companySlug) {
-			return await itemsOfShop(args.companySlug, idCategory, limit, assertOffset(args.offset))
-		}
+    if (args.companySlug) {
+      return await itemsOfShop(args.companySlug, idCategory, limit, assertOffset(args.offset))
+    }
 
-		return await itemsOfCategory(idCategory!, limit, assertOffset(args.offset, MAX_CROSS_SHOP_OFFSET))
-	}
+    return await itemsOfCategory(idCategory!, limit, assertOffset(args.offset, MAX_CROSS_SHOP_OFFSET))
+  }
 }
 
 async function itemsOfShop(companySlug: string, idCategory: Types.ObjectId | undefined, limit: number, offset: number) {
-	const company = await liveCompanyBySlug(companySlug)
+  const company = await liveCompanyBySlug(companySlug)
 
-	// An unknown, unpublished or retired shop is an empty catalogue, not an error — the same
-	// non-oracle `companyBySlug` maintains. The route renders its 404 from that query's `null`; this
-	// one must not contradict it with a message saying the shop exists but is hidden.
-	if (!company) return EMPTY_PAGE
+  // An unknown, unpublished or retired shop is an empty catalogue, not an error — the same
+  // non-oracle `companyBySlug` maintains. The route renders its 404 from that query's `null`; this
+  // one must not contradict it with a message saying the shop exists but is hidden.
+  if (!company) return EMPTY_PAGE
 
-	const filter = { idCompany: company._id, ...livePublic(), ...(idCategory ? { idCategory } : {}) }
+  const filter = { idCompany: company._id, ...livePublic(), ...(idCategory ? { idCategory } : {}) }
 
-	const [docs, total] = await Promise.all([
-		Item.find(filter, '_id idCategory name description slug')
-			.sort({ name: 1 })
-			.skip(offset)
-			.limit(limit + 1)
-			.lean<IShopItemDoc[]>(),
-		Item.countDocuments(filter, { limit: COUNT_CAP })
-	])
+  const [docs, total] = await Promise.all([
+    Item.find(filter, '_id idCategory name description slug')
+      .sort({ name: 1 })
+      .skip(offset)
+      .limit(limit + 1)
+      .lean<IShopItemDoc[]>(),
+    Item.countDocuments(filter, { limit: COUNT_CAP })
+  ])
 
-	const hasMore = docs.length > limit
-	if (hasMore) docs.pop()
+  const hasMore = docs.length > limit
+  if (hasMore) docs.pop()
 
-	return {
-		// The shop is already resolved, so its two identity fields are attached here for free rather
-		// than being re-read per item. This is what lets one node type serve all three item paths.
-		nodes: docs.map((doc) => ({ ...doc, companySlug: company.slug, companyPublicName: company.publicName })),
-		total,
-		totalIsExact: total < COUNT_CAP,
-		hasMore
-	}
+  return {
+    // The shop is already resolved, so its two identity fields are attached here for free rather
+    // than being re-read per item. This is what lets one node type serve all three item paths.
+    nodes: docs.map((doc) => ({ ...doc, companySlug: company.slug, companyPublicName: company.publicName })),
+    total,
+    totalIsExact: total < COUNT_CAP,
+    hasMore
+  }
 }
 
 async function itemsOfCategory(idCategory: Types.ObjectId, limit: number, offset: number) {
-	const match = { idCategory }
-	const sort = { _id: 1 } as const
+  const match = { idCategory }
+  const sort = { _id: 1 } as const
 
-	const [docs, total] = await Promise.all([
-		liveItemsAcrossShops(match, {}, sort, offset, limit + 1),
-		Item.countDocuments({ idCategory, ...livePublic() }, { limit: COUNT_CAP })
-	])
+  const [docs, total] = await Promise.all([
+    liveItemsAcrossShops(match, {}, sort, offset, limit + 1),
+    Item.countDocuments({ idCategory, ...livePublic() }, { limit: COUNT_CAP })
+  ])
 
-	let hasMore = docs.length > limit
+  let hasMore = docs.length > limit
 
-	// The bounded fetch's own window can run out before the join ever gets a chance to say there is no
-	// more — see `liveItemsAcrossShops`. Only that ambiguous case pays for the exact, unbounded check;
-	// the common case above answers for free from the sentinel document the `limit + 1` request already
-	// carries.
-	if (hasMore) {
-		docs.pop()
-	} else {
-		hasMore = await moreLiveItemsExist(match, {}, sort, offset + limit)
-	}
+  // The bounded fetch's own window can run out before the join ever gets a chance to say there is no
+  // more — see `liveItemsAcrossShops`. Only that ambiguous case pays for the exact, unbounded check;
+  // the common case above answers for free from the sentinel document the `limit + 1` request already
+  // carries.
+  if (hasMore) {
+    docs.pop()
+  } else {
+    hasMore = await moreLiveItemsExist(match, {}, sort, offset + limit)
+  }
 
-	return {
-		nodes: docs,
-		total,
-		// Never exact here, and not because of the cap: this count sees `item.published` and cannot
-		// see `company.published`, so it counts items belonging to shops that have gone dark. An
-		// upper bound, honestly labelled.
-		totalIsExact: false,
-		hasMore
-	}
+  return {
+    nodes: docs,
+    total,
+    // Never exact here, and not because of the cap: this count sees `item.published` and cannot
+    // see `company.published`, so it counts items belonging to shops that have gone dark. An
+    // upper bound, honestly labelled.
+    totalIsExact: false,
+    hasMore
+  }
 }

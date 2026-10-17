@@ -16,14 +16,14 @@ import { GraphQLBoolean, GraphQLFloat, GraphQLID, GraphQLList, GraphQLNonNull, G
  * A client sorting by distance must use the point form and get its centre from the browser.
  */
 export const GraphQLPublicCompanyNearby = new GraphQLObjectType({
-	name: 'GraphQLPublicCompanyNearby',
-	fields: () => ({
-		_id: { type: new GraphQLNonNull(GraphQLID) },
-		publicName: { type: new GraphQLNonNull(GraphQLString) },
-		slug: { type: new GraphQLNonNull(GraphQLString) },
-		position: { type: new GraphQLNonNull(GraphQLPublicPosition) },
-		distanceMeters: { type: GraphQLFloat }
-	})
+  name: 'GraphQLPublicCompanyNearby',
+  fields: () => ({
+    _id: { type: new GraphQLNonNull(GraphQLID) },
+    publicName: { type: new GraphQLNonNull(GraphQLString) },
+    slug: { type: new GraphQLNonNull(GraphQLString) },
+    position: { type: new GraphQLNonNull(GraphQLPublicPosition) },
+    distanceMeters: { type: GraphQLFloat }
+  })
 })
 
 /**
@@ -37,9 +37,9 @@ export const GraphQLPublicCompanyNearby = new GraphQLObjectType({
  * page.
  */
 export const GraphQLPublicCompanyNearbyResult = new GraphQLObjectType({
-	name: 'GraphQLPublicCompanyNearbyResult',
-	fields: () => ({
-		nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicCompanyNearby))) },
-		truncated: { type: new GraphQLNonNull(GraphQLBoolean) }
-	})
+  name: 'GraphQLPublicCompanyNearbyResult',
+  fields: () => ({
+    nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicCompanyNearby))) },
+    truncated: { type: new GraphQLNonNull(GraphQLBoolean) }
+  })
 })

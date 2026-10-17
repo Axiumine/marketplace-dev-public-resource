@@ -102,7 +102,7 @@ const idCompanyDraft = new mongoose.Types.ObjectId()
 const idCompanyGone = new mongoose.Types.ObjectId()
 
 function db() {
-	return mongoose.connection.db!
+  return mongoose.connection.db!
 }
 
 /** Every node below is read for its slug and nothing else — the slug is what says which fixture it is. */
@@ -113,13 +113,13 @@ type Page<T> = { nodes: T[]; total: number; totalIsExact: boolean }
 
 /** POST a GraphQL document to the real endpoint and return the parsed body. */
 async function gql<T>(query: string, variables?: Record<string, unknown>) {
-	const res = await fetch(`${base}${ENDPOINT}`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ query, variables })
-	})
+  const res = await fetch(`${base}${ENDPOINT}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query, variables })
+  })
 
-	return (await res.json()) as { data?: T; errors?: Array<{ message: string }> }
+  return (await res.json()) as { data?: T; errors?: Array<{ message: string }> }
 }
 
 /**
@@ -128,16 +128,16 @@ async function gql<T>(query: string, variables?: Record<string, unknown>) {
  * green and prove nothing.
  */
 async function data<T>(query: string, variables?: Record<string, unknown>) {
-	const body = await gql<T>(query, variables)
+  const body = await gql<T>(query, variables)
 
-	expect(body.errors, JSON.stringify(body.errors)).toBeUndefined()
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined()
 
-	return body.data!
+  return body.data!
 }
 
 async function insert(collection: 'company' | 'item' | 'itemCategory', document: Record<string, unknown>) {
-	await db().collection(collection).insertOne(document)
-	seeded.push({ collection, _id: document._id as mongoose.Types.ObjectId })
+  await db().collection(collection).insertOne(document)
+  seeded.push({ collection, _id: document._id as mongoose.Types.ObjectId })
 }
 
 /**
@@ -149,319 +149,319 @@ async function insert(collection: 'company' | 'item' | 'itemCategory', document:
  * would decrypt with — no public query reads either field, which is the point of encrypting them.
  */
 async function seedCompany(_id: mongoose.Types.ObjectId, slug: string, nth: number, extra: Record<string, unknown>) {
-	await insert(
-		'company',
-		await encryptDocument(
-			{
-				_id,
-				idShopOwner: new mongoose.Types.ObjectId(),
-				legalName: `Liveness ${RUN} Ltd`,
-				vatNumber: `${VAT_STEM}${nth}`,
-				contactPerson: 'Itest Contact',
-				administrator: 'Itest Administrator',
-				certifiedEmail: `itest-${RUN}-${nth}@marketplace.invalid`,
-				registryExtract: 'itest registry extract',
-				address: {
-					street: '1 Liveness Street',
-					postalCode: '80122',
-					city: CITY,
-					province: 'NZ',
-					position: { type: 'Point', coordinates: [LNG, LAT] }
-				},
-				publicName: `Liveness Shop ${RUN}`,
-				slug,
-				description: `A shop seeded by the R58 liveness suite. ${TOKEN}`,
-				...extra
-			},
-			ENCRYPTED_FIELDS_COMPANY,
-			KEY_ALT_NAME_COMPANY
-		)
-	)
+  await insert(
+    'company',
+    await encryptDocument(
+      {
+        _id,
+        idShopOwner: new mongoose.Types.ObjectId(),
+        legalName: `Liveness ${RUN} Ltd`,
+        vatNumber: `${VAT_STEM}${nth}`,
+        contactPerson: 'Itest Contact',
+        administrator: 'Itest Administrator',
+        certifiedEmail: `itest-${RUN}-${nth}@marketplace.invalid`,
+        registryExtract: 'itest registry extract',
+        address: {
+          street: '1 Liveness Street',
+          postalCode: '80122',
+          city: CITY,
+          province: 'NZ',
+          position: { type: 'Point', coordinates: [LNG, LAT] }
+        },
+        publicName: `Liveness Shop ${RUN}`,
+        slug,
+        description: `A shop seeded by the R58 liveness suite. ${TOKEN}`,
+        ...extra
+      },
+      ENCRYPTED_FIELDS_COMPANY,
+      KEY_ALT_NAME_COMPANY
+    )
+  )
 }
 
 async function seedItem(idCompany: mongoose.Types.ObjectId, slug: string, extra: Record<string, unknown>) {
-	await insert('item', {
-		_id: new mongoose.Types.ObjectId(),
-		idCompany,
-		idCategory,
-		name: `Liveness Item ${RUN}`,
-		description: `An item seeded by the R58 liveness suite. ${TOKEN}`,
-		slug,
-		...extra
-	})
+  await insert('item', {
+    _id: new mongoose.Types.ObjectId(),
+    idCompany,
+    idCategory,
+    name: `Liveness Item ${RUN}`,
+    description: `An item seeded by the R58 liveness suite. ${TOKEN}`,
+    slug,
+    ...extra
+  })
 }
 
 beforeAll(async () => {
-	;({ httpServer, base } = await bootHttpServer())
+  ;({ httpServer, base } = await bootHttpServer())
 
-	await insert('itemCategory', { _id: idCategory, name: `Liveness ${RUN}`, slug: CATEGORY_LIVE, position: 900 })
-	await insert('itemCategory', {
-		_id: idCategoryGone,
-		name: `Liveness gone ${RUN}`,
-		slug: CATEGORY_GONE,
-		position: 901,
-		deleted: new Date()
-	})
+  await insert('itemCategory', { _id: idCategory, name: `Liveness ${RUN}`, slug: CATEGORY_LIVE, position: 900 })
+  await insert('itemCategory', {
+    _id: idCategoryGone,
+    name: `Liveness gone ${RUN}`,
+    slug: CATEGORY_GONE,
+    position: 901,
+    deleted: new Date()
+  })
 
-	await seedCompany(idCompanyLive, COMPANY_LIVE, 1, { published: true })
-	await seedCompany(idCompanyDraft, COMPANY_DRAFT, 2, { published: false })
-	await seedCompany(idCompanyGone, COMPANY_GONE, 3, { published: true, deleted: new Date() })
+  await seedCompany(idCompanyLive, COMPANY_LIVE, 1, { published: true })
+  await seedCompany(idCompanyDraft, COMPANY_DRAFT, 2, { published: false })
+  await seedCompany(idCompanyGone, COMPANY_GONE, 3, { published: true, deleted: new Date() })
 
-	await seedItem(idCompanyLive, ITEM_LIVE, { published: true })
-	await seedItem(idCompanyLive, ITEM_DRAFT, { published: false })
-	await seedItem(idCompanyLive, ITEM_GONE, { published: true, deleted: new Date() })
-	await seedItem(idCompanyDraft, ITEM_IN_DRAFT_SHOP, { published: true })
+  await seedItem(idCompanyLive, ITEM_LIVE, { published: true })
+  await seedItem(idCompanyLive, ITEM_DRAFT, { published: false })
+  await seedItem(idCompanyLive, ITEM_GONE, { published: true, deleted: new Date() })
+  await seedItem(idCompanyDraft, ITEM_IN_DRAFT_SHOP, { published: true })
 })
 
 afterAll(async () => {
-	for (const { collection, _id } of seeded) {
-		try {
-			await db().collection(collection).deleteOne({ _id })
-		} catch (error) {
-			console.error(`[afterAll] cleanup failed for ${collection} ${_id.toString()}:`, error)
-		}
-	}
-	await new Promise<void>((resolve) => httpServer.close(() => resolve()))
-	await redisClient.close()
-	await mongoose.disconnect()
+  for (const { collection, _id } of seeded) {
+    try {
+      await db().collection(collection).deleteOne({ _id })
+    } catch (error) {
+      console.error(`[afterAll] cleanup failed for ${collection} ${_id.toString()}:`, error)
+    }
+  }
+  await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+  await redisClient.close()
+  await mongoose.disconnect()
 })
 
 /** Every public read this file drives, one `describe` each. */
 const COVERED = [
-	'companies',
-	'companyBySlug',
-	'companiesNearby',
-	'items',
-	'itemBySlug',
-	'itemCategories',
-	'searchCompanies',
-	'searchItems',
-	'sitemapEntries'
+  'companies',
+  'companyBySlug',
+  'companiesNearby',
+  'items',
+  'itemBySlug',
+  'itemCategories',
+  'searchCompanies',
+  'searchItems',
+  'sitemapEntries'
 ]
 
 /** The two demo queries, which read no collection and so have no liveness to check. */
 const NOT_A_CATALOGUE_READ = ['publicHelloNoArgs', 'publicHelloArgs']
 
 describe('the public read surface', () => {
-	it('is covered field for field, so a tenth read cannot be added without seeding a draft for it', () => {
-		expect(Object.keys(QueriesPublic.getFields()).sort()).toEqual([...COVERED, ...NOT_A_CATALOGUE_READ].sort())
-	})
+  it('is covered field for field, so a tenth read cannot be added without seeding a draft for it', () => {
+    expect(Object.keys(QueriesPublic.getFields()).sort()).toEqual([...COVERED, ...NOT_A_CATALOGUE_READ].sort())
+  })
 })
 
 describe('the seed itself (integration, real MongoDB)', () => {
-	it('put all nine documents on disk, so an empty answer below is a filter and not a rejected insert', async () => {
-		const [companies, items, categories] = await Promise.all([
-			db()
-				.collection('company')
-				.find({ slug: { $in: [COMPANY_LIVE, COMPANY_DRAFT, COMPANY_GONE] } })
-				.toArray(),
-			db()
-				.collection('item')
-				.find({ slug: { $in: [ITEM_LIVE, ITEM_DRAFT, ITEM_GONE, ITEM_IN_DRAFT_SHOP] } })
-				.toArray(),
-			db()
-				.collection('itemCategory')
-				.find({ slug: { $in: [CATEGORY_LIVE, CATEGORY_GONE] } })
-				.toArray()
-		])
+  it('put all nine documents on disk, so an empty answer below is a filter and not a rejected insert', async () => {
+    const [companies, items, categories] = await Promise.all([
+      db()
+        .collection('company')
+        .find({ slug: { $in: [COMPANY_LIVE, COMPANY_DRAFT, COMPANY_GONE] } })
+        .toArray(),
+      db()
+        .collection('item')
+        .find({ slug: { $in: [ITEM_LIVE, ITEM_DRAFT, ITEM_GONE, ITEM_IN_DRAFT_SHOP] } })
+        .toArray(),
+      db()
+        .collection('itemCategory')
+        .find({ slug: { $in: [CATEGORY_LIVE, CATEGORY_GONE] } })
+        .toArray()
+    ])
 
-		expect(companies).toHaveLength(3)
-		expect(items).toHaveLength(4)
-		expect(categories).toHaveLength(2)
-	})
+    expect(companies).toHaveLength(3)
+    expect(items).toHaveLength(4)
+    expect(categories).toHaveLength(2)
+  })
 })
 
 describe('companies: the shop listing answers with published, undeleted shops only', () => {
-	const query = `query ($city: String!) {
+  const query = `query ($city: String!) {
 		companies(city: $city, limit: 60) { nodes { slug } total totalIsExact }
 	}`
 
-	it('returns the live shop and neither the draft nor the deleted one', async () => {
-		const { companies } = await data<{ companies: Page<Slugged> }>(query, { city: CITY })
+  it('returns the live shop and neither the draft nor the deleted one', async () => {
+    const { companies } = await data<{ companies: Page<Slugged> }>(query, { city: CITY })
 
-		expect(companies.nodes.map((node) => node.slug)).toEqual([COMPANY_LIVE])
-	})
+    expect(companies.nodes.map((node) => node.slug)).toEqual([COMPANY_LIVE])
+  })
 
-	it('counts what it returns: the draft and the deleted shop are outside `total` as well', async () => {
-		const { companies } = await data<{ companies: Page<Slugged> }>(query, { city: CITY })
+  it('counts what it returns: the draft and the deleted shop are outside `total` as well', async () => {
+    const { companies } = await data<{ companies: Page<Slugged> }>(query, { city: CITY })
 
-		expect(companies.total).toBe(1)
-		expect(companies.totalIsExact).toBe(true)
-	})
+    expect(companies.total).toBe(1)
+    expect(companies.totalIsExact).toBe(true)
+  })
 })
 
 describe('companyBySlug: a draft shop and a deleted shop are both 404, not 403', () => {
-	const query = `query ($slug: String!) { companyBySlug(slug: $slug) { slug } }`
+  const query = `query ($slug: String!) { companyBySlug(slug: $slug) { slug } }`
 
-	it('answers the live shop', async () => {
-		const { companyBySlug } = await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_LIVE })
+  it('answers the live shop', async () => {
+    const { companyBySlug } = await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_LIVE })
 
-		expect(companyBySlug).toEqual({ slug: COMPANY_LIVE })
-	})
+    expect(companyBySlug).toEqual({ slug: COMPANY_LIVE })
+  })
 
-	it('answers null for the draft shop', async () => {
-		expect((await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_DRAFT })).companyBySlug).toBeNull()
-	})
+  it('answers null for the draft shop', async () => {
+    expect((await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_DRAFT })).companyBySlug).toBeNull()
+  })
 
-	it('answers null for the deleted shop', async () => {
-		expect((await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_GONE })).companyBySlug).toBeNull()
-	})
+  it('answers null for the deleted shop', async () => {
+    expect((await data<{ companyBySlug: Slugged | null }>(query, { slug: COMPANY_GONE })).companyBySlug).toBeNull()
+  })
 })
 
 describe('companiesNearby: the map island plots no drafts', () => {
-	const query = `query ($bbox: GraphQLInputBoundingBox!) {
+  const query = `query ($bbox: GraphQLInputBoundingBox!) {
 		companiesNearby(bbox: $bbox, limit: 60) { nodes { slug } }
 	}`
 
-	it('plots the live shop and drops the other two, which share its coordinates exactly', async () => {
-		const { companiesNearby } = await data<{ companiesNearby: { nodes: Slugged[] } }>(query, { bbox: BBOX })
-		const slugs = companiesNearby.nodes.map((node) => node.slug)
+  it('plots the live shop and drops the other two, which share its coordinates exactly', async () => {
+    const { companiesNearby } = await data<{ companiesNearby: { nodes: Slugged[] } }>(query, { bbox: BBOX })
+    const slugs = companiesNearby.nodes.map((node) => node.slug)
 
-		expect(slugs).toContain(COMPANY_LIVE)
-		expect(slugs).not.toContain(COMPANY_DRAFT)
-		expect(slugs).not.toContain(COMPANY_GONE)
-	})
+    expect(slugs).toContain(COMPANY_LIVE)
+    expect(slugs).not.toContain(COMPANY_DRAFT)
+    expect(slugs).not.toContain(COMPANY_GONE)
+  })
 })
 
 describe('items: a shop catalogue, and a category across shops', () => {
-	const byShop = `query ($companySlug: String!) {
+  const byShop = `query ($companySlug: String!) {
 		items(companySlug: $companySlug, limit: 60) { nodes { slug } total }
 	}`
 
-	it('serves the live item of the live shop, and neither its draft nor its deleted sibling', async () => {
-		const { items } = await data<{ items: Page<Slugged> }>(byShop, { companySlug: COMPANY_LIVE })
+  it('serves the live item of the live shop, and neither its draft nor its deleted sibling', async () => {
+    const { items } = await data<{ items: Page<Slugged> }>(byShop, { companySlug: COMPANY_LIVE })
 
-		expect(items.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
-		expect(items.total).toBe(1)
-	})
+    expect(items.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
+    expect(items.total).toBe(1)
+  })
 
-	it('serves an empty catalogue for the draft shop rather than the item it really holds', async () => {
-		const { items } = await data<{ items: Page<Slugged> }>(byShop, { companySlug: COMPANY_DRAFT })
+  it('serves an empty catalogue for the draft shop rather than the item it really holds', async () => {
+    const { items } = await data<{ items: Page<Slugged> }>(byShop, { companySlug: COMPANY_DRAFT })
 
-		expect(items.nodes).toEqual([])
-		expect(items.total).toBe(0)
-	})
+    expect(items.nodes).toEqual([])
+    expect(items.total).toBe(0)
+  })
 
-	it('drops the published item of an unpublished shop from a category listing', async () => {
-		const { items } = await data<{ items: Page<Slugged & { companySlug: string }> }>(
-			`query ($idCategory: ID!) {
+  it('drops the published item of an unpublished shop from a category listing', async () => {
+    const { items } = await data<{ items: Page<Slugged & { companySlug: string }> }>(
+      `query ($idCategory: ID!) {
 				items(idCategory: $idCategory, limit: 60) { nodes { slug companySlug } totalIsExact }
 			}`,
-			{ idCategory: idCategory.toString() }
-		)
+      { idCategory: idCategory.toString() }
+    )
 
-		expect(items.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
-		// The count behind this listing sees `item.published` and cannot see `company.published`, so
-		// it is an upper bound and says so. `nodes` is the answer; `total` is labelled inexact.
-		expect(items.totalIsExact).toBe(false)
-	})
+    expect(items.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
+    // The count behind this listing sees `item.published` and cannot see `company.published`, so
+    // it is an upper bound and says so. `nodes` is the answer; `total` is labelled inexact.
+    expect(items.totalIsExact).toBe(false)
+  })
 })
 
 type ItemBySlug = { itemBySlug: Slugged | null }
 
 describe('itemBySlug: the item detail page', () => {
-	const query = `query ($companySlug: String!, $slug: String!) {
+  const query = `query ($companySlug: String!, $slug: String!) {
 		itemBySlug(companySlug: $companySlug, slug: $slug) { slug }
 	}`
 
-	it('answers the live item of the live shop', async () => {
-		const { itemBySlug } = await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_LIVE })
+  it('answers the live item of the live shop', async () => {
+    const { itemBySlug } = await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_LIVE })
 
-		expect(itemBySlug).toEqual({ slug: ITEM_LIVE })
-	})
+    expect(itemBySlug).toEqual({ slug: ITEM_LIVE })
+  })
 
-	it('answers null for a draft item of a live shop', async () => {
-		expect((await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_DRAFT })).itemBySlug).toBeNull()
-	})
+  it('answers null for a draft item of a live shop', async () => {
+    expect((await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_DRAFT })).itemBySlug).toBeNull()
+  })
 
-	it('answers null for a deleted item of a live shop', async () => {
-		expect((await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_GONE })).itemBySlug).toBeNull()
-	})
+  it('answers null for a deleted item of a live shop', async () => {
+    expect((await data<ItemBySlug>(query, { companySlug: COMPANY_LIVE, slug: ITEM_GONE })).itemBySlug).toBeNull()
+  })
 
-	it('answers null for a published item whose shop is still a draft', async () => {
-		expect((await data<ItemBySlug>(query, { companySlug: COMPANY_DRAFT, slug: ITEM_IN_DRAFT_SHOP })).itemBySlug).toBeNull()
-	})
+  it('answers null for a published item whose shop is still a draft', async () => {
+    expect((await data<ItemBySlug>(query, { companySlug: COMPANY_DRAFT, slug: ITEM_IN_DRAFT_SHOP })).itemBySlug).toBeNull()
+  })
 })
 
 describe('search: the text index reaches drafts and the filter does not', () => {
-	it('searchCompanies returns the live shop alone, though all three carry the token', async () => {
-		const { searchCompanies } = await data<{ searchCompanies: { nodes: Slugged[] } }>(
-			`query ($q: String!) { searchCompanies(q: $q, limit: 60) { nodes { slug } } }`,
-			{ q: TOKEN }
-		)
+  it('searchCompanies returns the live shop alone, though all three carry the token', async () => {
+    const { searchCompanies } = await data<{ searchCompanies: { nodes: Slugged[] } }>(
+      `query ($q: String!) { searchCompanies(q: $q, limit: 60) { nodes { slug } } }`,
+      { q: TOKEN }
+    )
 
-		expect(searchCompanies.nodes.map((node) => node.slug)).toEqual([COMPANY_LIVE])
-	})
+    expect(searchCompanies.nodes.map((node) => node.slug)).toEqual([COMPANY_LIVE])
+  })
 
-	it('searchItems returns the live item alone, though all four carry the token', async () => {
-		const { searchItems } = await data<{ searchItems: { nodes: Slugged[] } }>(
-			`query ($q: String!) { searchItems(q: $q, limit: 60) { nodes { slug } } }`,
-			{ q: TOKEN }
-		)
+  it('searchItems returns the live item alone, though all four carry the token', async () => {
+    const { searchItems } = await data<{ searchItems: { nodes: Slugged[] } }>(
+      `query ($q: String!) { searchItems(q: $q, limit: 60) { nodes { slug } } }`,
+      { q: TOKEN }
+    )
 
-		expect(searchItems.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
-	})
+    expect(searchItems.nodes.map((node) => node.slug)).toEqual([ITEM_LIVE])
+  })
 })
 
 describe('sitemapEntries: what a crawler is invited to index', () => {
-	/** One page of `sitemapEntries`, named so the loop below has something to annotate the await with. */
-	type SitemapPage = { sitemapEntries: { nodes: Array<{ path: string }>; nextAfterId: string | null } }
+  /** One page of `sitemapEntries`, named so the loop below has something to annotate the await with. */
+  type SitemapPage = { sitemapEntries: { nodes: Array<{ path: string }>; nextAfterId: string | null } }
 
-	/** Walk every page of one kind — the listing spans the collection, this run's rows do not. */
-	async function allPaths(kind: 'COMPANY' | 'ITEM' | 'CATEGORY') {
-		const paths: string[] = []
-		let afterId: string | null = null
+  /** Walk every page of one kind — the listing spans the collection, this run's rows do not. */
+  async function allPaths(kind: 'COMPANY' | 'ITEM' | 'CATEGORY') {
+    const paths: string[] = []
+    let afterId: string | null = null
 
-		do {
-			// Destructuring straight off the `await` here sends TS into a self-referential loop over
-			// `afterId`'s own type (TS7022) — the assignment below feeds back into the call above on the
-			// next iteration. Naming the page first breaks the cycle; nothing about the query changes.
-			const page: SitemapPage = await data<SitemapPage>(
-				`query ($kind: GraphQLSitemapKind!, $afterId: ID) {
+    do {
+      // Destructuring straight off the `await` here sends TS into a self-referential loop over
+      // `afterId`'s own type (TS7022) — the assignment below feeds back into the call above on the
+      // next iteration. Naming the page first breaks the cycle; nothing about the query changes.
+      const page: SitemapPage = await data<SitemapPage>(
+        `query ($kind: GraphQLSitemapKind!, $afterId: ID) {
 					sitemapEntries(kind: $kind, afterId: $afterId, limit: 60) { nodes { path } nextAfterId }
 				}`,
-				{ kind, afterId }
-			)
-			const { sitemapEntries } = page
+        { kind, afterId }
+      )
+      const { sitemapEntries } = page
 
-			paths.push(...sitemapEntries.nodes.map((node) => node.path))
-			afterId = sitemapEntries.nextAfterId
-		} while (afterId)
+      paths.push(...sitemapEntries.nodes.map((node) => node.path))
+      afterId = sitemapEntries.nextAfterId
+    } while (afterId)
 
-		return paths
-	}
+    return paths
+  }
 
-	it('lists the live shop and neither the draft nor the deleted one', async () => {
-		const paths = await allPaths('COMPANY')
+  it('lists the live shop and neither the draft nor the deleted one', async () => {
+    const paths = await allPaths('COMPANY')
 
-		expect(paths).toContain(`/shop/${COMPANY_LIVE}`)
-		expect(paths).not.toContain(`/shop/${COMPANY_DRAFT}`)
-		expect(paths).not.toContain(`/shop/${COMPANY_GONE}`)
-	})
+    expect(paths).toContain(`/shop/${COMPANY_LIVE}`)
+    expect(paths).not.toContain(`/shop/${COMPANY_DRAFT}`)
+    expect(paths).not.toContain(`/shop/${COMPANY_GONE}`)
+  })
 
-	it('lists the live item, and not the draft, the deleted, or the one in the draft shop', async () => {
-		const paths = await allPaths('ITEM')
+  it('lists the live item, and not the draft, the deleted, or the one in the draft shop', async () => {
+    const paths = await allPaths('ITEM')
 
-		expect(paths).toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_LIVE}`)
-		expect(paths).not.toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_DRAFT}`)
-		expect(paths).not.toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_GONE}`)
-		expect(paths).not.toContain(`/shop/${COMPANY_DRAFT}/item/${ITEM_IN_DRAFT_SHOP}`)
-	})
+    expect(paths).toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_LIVE}`)
+    expect(paths).not.toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_DRAFT}`)
+    expect(paths).not.toContain(`/shop/${COMPANY_LIVE}/item/${ITEM_GONE}`)
+    expect(paths).not.toContain(`/shop/${COMPANY_DRAFT}/item/${ITEM_IN_DRAFT_SHOP}`)
+  })
 
-	it('lists the live category and not the deleted one', async () => {
-		const paths = await allPaths('CATEGORY')
+  it('lists the live category and not the deleted one', async () => {
+    const paths = await allPaths('CATEGORY')
 
-		expect(paths).toContain(`/category/${CATEGORY_LIVE}`)
-		expect(paths).not.toContain(`/category/${CATEGORY_GONE}`)
-	})
+    expect(paths).toContain(`/category/${CATEGORY_LIVE}`)
+    expect(paths).not.toContain(`/category/${CATEGORY_GONE}`)
+  })
 })
 
 describe('itemCategories: the menu', () => {
-	it('carries the live category and not the deleted one', async () => {
-		const { itemCategories } = await data<{ itemCategories: Slugged[] }>(`{ itemCategories { slug } }`)
-		const slugs = itemCategories.map((node) => node.slug)
+  it('carries the live category and not the deleted one', async () => {
+    const { itemCategories } = await data<{ itemCategories: Slugged[] }>(`{ itemCategories { slug } }`)
+    const slugs = itemCategories.map((node) => node.slug)
 
-		expect(slugs).toContain(CATEGORY_LIVE)
-		expect(slugs).not.toContain(CATEGORY_GONE)
-	})
+    expect(slugs).toContain(CATEGORY_LIVE)
+    expect(slugs).not.toContain(CATEGORY_GONE)
+  })
 })

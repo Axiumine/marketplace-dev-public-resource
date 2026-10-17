@@ -30,204 +30,204 @@ const TYPED_EMAIL = ' Seller@Marketplace.TEST '
 const EMAIL = 'seller@marketplace.test'
 
 const registerArgs = {
-	email: TYPED_EMAIL,
-	password: 'sup3r-secret',
-	repeatPassword: 'sup3r-secret',
-	turnstileToken: 'cf-token'
+  email: TYPED_EMAIL,
+  password: 'sup3r-secret',
+  repeatPassword: 'sup3r-secret',
+  turnstileToken: 'cf-token'
 }
 
 beforeEach(async () => {
-	vi.clearAllMocks()
-	;({ shopOwnerRegister } = await import('../src/graphQLPublic/schema/mutations/shopOwnerRegister.mts'))
+  vi.clearAllMocks()
+  ;({ shopOwnerRegister } = await import('../src/graphQLPublic/schema/mutations/shopOwnerRegister.mts'))
 })
 
 describe('shopOwnerRegister — the field', () => {
-	// The description is the one place a reader of the schema learns that this does not produce a seller,
-	// only a request to be one — so it is pinned, not merely present.
-	it('answers a non-nullable Boolean and says the account is pending approval', () => {
-		expect(shopOwnerRegister.description).toBe('Register a new shop owner, pending admin approval, and send the activation link')
-		expect(shopOwnerRegister.type).toBeInstanceOf(GraphQLNonNull)
-		expect((shopOwnerRegister.type as GraphQLNonNull<typeof GraphQLBoolean>).ofType).toBe(GraphQLBoolean)
-	})
+  // The description is the one place a reader of the schema learns that this does not produce a seller,
+  // only a request to be one — so it is pinned, not merely present.
+  it('answers a non-nullable Boolean and says the account is pending approval', () => {
+    expect(shopOwnerRegister.description).toBe('Register a new shop owner, pending admin approval, and send the activation link')
+    expect(shopOwnerRegister.type).toBeInstanceOf(GraphQLNonNull)
+    expect((shopOwnerRegister.type as GraphQLNonNull<typeof GraphQLBoolean>).ofType).toBe(GraphQLBoolean)
+  })
 
-	// `turnstileToken` is the one nullable argument, for the reason `userRegister`'s is: a required
-	// argument would make the mutation uncallable by any client that has not minted a token yet.
-	it('requires the three credentials and leaves the captcha token optional', () => {
-		expect(Object.keys(shopOwnerRegister.args)).toEqual(['email', 'password', 'repeatPassword', 'turnstileToken'])
-		expect(shopOwnerRegister.args.email.type).toBeInstanceOf(GraphQLNonNull)
-		expect(shopOwnerRegister.args.password.type).toBeInstanceOf(GraphQLNonNull)
-		expect(shopOwnerRegister.args.repeatPassword.type).toBeInstanceOf(GraphQLNonNull)
-		expect(shopOwnerRegister.args.turnstileToken.type).toBe(GraphQLString)
-	})
+  // `turnstileToken` is the one nullable argument, for the reason `userRegister`'s is: a required
+  // argument would make the mutation uncallable by any client that has not minted a token yet.
+  it('requires the three credentials and leaves the captcha token optional', () => {
+    expect(Object.keys(shopOwnerRegister.args)).toEqual(['email', 'password', 'repeatPassword', 'turnstileToken'])
+    expect(shopOwnerRegister.args.email.type).toBeInstanceOf(GraphQLNonNull)
+    expect(shopOwnerRegister.args.password.type).toBeInstanceOf(GraphQLNonNull)
+    expect(shopOwnerRegister.args.repeatPassword.type).toBeInstanceOf(GraphQLNonNull)
+    expect(shopOwnerRegister.args.turnstileToken.type).toBe(GraphQLString)
+  })
 
-	// ⚠️ No `personalData` argument, and there must not be one. The registration is an address and a
-	// password; a form that also collected a name and a birth date would put five more strings on an
-	// unauthenticated mutation and gain nothing — nobody has been identified yet, and onboarding asks
-	// once the admin has approved the account.
-	it('collects credentials only, no identity', () => {
-		expect(Object.keys(shopOwnerRegister.args)).not.toContain('personalData')
-		expect(Object.keys(shopOwnerRegister.args)).not.toContain('firstName')
-	})
+  // ⚠️ No `personalData` argument, and there must not be one. The registration is an address and a
+  // password; a form that also collected a name and a birth date would put five more strings on an
+  // unauthenticated mutation and gain nothing — nobody has been identified yet, and onboarding asks
+  // once the admin has approved the account.
+  it('collects credentials only, no identity', () => {
+    expect(Object.keys(shopOwnerRegister.args)).not.toContain('personalData')
+    expect(Object.keys(shopOwnerRegister.args)).not.toContain('firstName')
+  })
 })
 
 describe('shopOwnerRegister — validation, before anything is spent', () => {
-	// The lengths are koa-utils' rules, called here so a 4 KB "email" is refused before it becomes a Redis
-	// key and a bcrypt round. The normalised address goes to the checker and the raw password does:
-	// trimming a password would silently change what the seller typed.
-	it('checks the normalised address and the password as typed', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
+  // The lengths are koa-utils' rules, called here so a 4 KB "email" is refused before it becomes a Redis
+  // key and a bcrypt round. The normalised address goes to the checker and the raw password does:
+  // trimming a password would silently change what the seller typed.
+  it('checks the normalised address and the password as typed', async () => {
+    await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
-		expect(checkPwdLen).toHaveBeenCalledExactlyOnceWith('sup3r-secret')
-	})
+    expect(checkEmailLen).toHaveBeenCalledExactlyOnceWith(EMAIL)
+    expect(checkPwdLen).toHaveBeenCalledExactlyOnceWith('sup3r-secret')
+  })
 
-	it('stops on a refused length without touching Redis or Mongo', async () => {
-		checkEmailLen.mockImplementationOnce(() => {
-			throw new Error('email too long')
-		})
+  it('stops on a refused length without touching Redis or Mongo', async () => {
+    checkEmailLen.mockImplementationOnce(() => {
+      throw new Error('email too long')
+    })
 
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('email too long')
+    await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('email too long')
 
-		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
-	})
+    expect(guardPublicWrite).not.toHaveBeenCalled()
+    expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+  })
 
-	// ⚠️ **`repeatPassword` is a control here and a courtesy in the form.** The frontend check exists to
-	// tell the typist before they submit; nothing stops a client from not being that frontend.
-	it('refuses two different passwords, before the guard and before the submission', async () => {
-		// koa-utils puts the readable half in `extensions.description` and keeps `message` at the status
-		// title, so asserting on `message` alone would pass for every 400 this mutation can raise.
-		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' })).rejects.toMatchObject({
-			message: 'Bad Request',
-			extensions: { http: { status: 400 }, description: 'The two passwords do not match' }
-		})
+  // ⚠️ **`repeatPassword` is a control here and a courtesy in the form.** The frontend check exists to
+  // tell the typist before they submit; nothing stops a client from not being that frontend.
+  it('refuses two different passwords, before the guard and before the submission', async () => {
+    // koa-utils puts the readable half in `extensions.description` and keeps `message` at the status
+    // title, so asserting on `message` alone would pass for every 400 this mutation can raise.
+    await expect(shopOwnerRegister.resolve(null, { ...registerArgs, repeatPassword: 'sup3r-secrey' })).rejects.toMatchObject({
+      message: 'Bad Request',
+      extensions: { http: { status: 400 }, description: 'The two passwords do not match' }
+    })
 
-		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
-	})
+    expect(guardPublicWrite).not.toHaveBeenCalled()
+    expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+  })
 
-	it('compares the passwords byte for byte, not case-insensitively', async () => {
-		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, repeatPassword: 'SUP3R-SECRET' })).rejects.toMatchObject({
-			extensions: { description: 'The two passwords do not match' }
-		})
-	})
+  it('compares the passwords byte for byte, not case-insensitively', async () => {
+    await expect(shopOwnerRegister.resolve(null, { ...registerArgs, repeatPassword: 'SUP3R-SECRET' })).rejects.toMatchObject({
+      extensions: { description: 'The two passwords do not match' }
+    })
+  })
 
-	// ⚠️ **B11**: `checkPwdLen` is mocked to a no-op above, so this exercises the real
-	// `assertPasswordByteLength` — the guard `checkPwdLen`'s UTF-16 `.length` count cannot catch. 71 ASCII
-	// bytes plus one precomposed `é` is 72 UTF-16 code units — the same count a 72-character ASCII password
-	// has — but 73 UTF-8 bytes, past what bcrypt actually hashes.
-	it('refuses a password that is 72 characters but 73 UTF-8 bytes', async () => {
-		const password = `${'a'.repeat(71)}é`
-		expect(password.length).toBe(72)
-		expect(Buffer.byteLength(password, 'utf8')).toBe(73)
+  // ⚠️ **B11**: `checkPwdLen` is mocked to a no-op above, so this exercises the real
+  // `assertPasswordByteLength` — the guard `checkPwdLen`'s UTF-16 `.length` count cannot catch. 71 ASCII
+  // bytes plus one precomposed `é` is 72 UTF-16 code units — the same count a 72-character ASCII password
+  // has — but 73 UTF-8 bytes, past what bcrypt actually hashes.
+  it('refuses a password that is 72 characters but 73 UTF-8 bytes', async () => {
+    const password = `${'a'.repeat(71)}é`
+    expect(password.length).toBe(72)
+    expect(Buffer.byteLength(password, 'utf8')).toBe(73)
 
-		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).rejects.toMatchObject(
-			{
-				message: 'Bad Request',
-				extensions: { http: { status: 400 }, description: 'Password is too long' }
-			}
-		)
+    await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).rejects.toMatchObject(
+      {
+        message: 'Bad Request',
+        extensions: { http: { status: 400 }, description: 'Password is too long' }
+      }
+    )
 
-		expect(guardPublicWrite).not.toHaveBeenCalled()
-		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
-	})
+    expect(guardPublicWrite).not.toHaveBeenCalled()
+    expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+  })
 
-	// The boundary's accepting side: exactly 72 UTF-8 bytes must pass through to the flow untouched.
-	it('accepts a password that is exactly 72 UTF-8 bytes', async () => {
-		const password = 'a'.repeat(72)
-		expect(Buffer.byteLength(password, 'utf8')).toBe(72)
+  // The boundary's accepting side: exactly 72 UTF-8 bytes must pass through to the flow untouched.
+  it('accepts a password that is exactly 72 UTF-8 bytes', async () => {
+    const password = 'a'.repeat(72)
+    expect(Buffer.byteLength(password, 'utf8')).toBe(72)
 
-		await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).resolves.toBe(true)
+    await expect(shopOwnerRegister.resolve(null, { ...registerArgs, password, repeatPassword: password })).resolves.toBe(true)
 
-		expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, password)
-	})
+    expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, password)
+  })
 })
 
 describe('shopOwnerRegister — the guard', () => {
-	// ⚠️ **A bucket of its own, not `userRegister`'s.** The two collections are unrelated by design
-	// (ADR-002), so one person may legitimately be both a customer and a seller at the same address —
-	// sharing a counter would let three seller attempts spend the customer's hourly allowance and lock
-	// them out of a registration they have not tried yet.
-	it('meters three activation mails an hour per address, in its own bucket', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
+  // ⚠️ **A bucket of its own, not `userRegister`'s.** The two collections are unrelated by design
+  // (ADR-002), so one person may legitimately be both a customer and a seller at the same address —
+  // sharing a counter would let three seller attempts spend the customer's hourly allowance and lock
+  // them out of a registration they have not tried yet.
+  it('meters three activation mails an hour per address, in its own bucket', async () => {
+    await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
-			bucket: 'shopOwnerRegister',
-			email: EMAIL,
-			turnstileToken: 'cf-token',
-			perEmailPerHour: 3
-		})
-	})
+    expect(guardPublicWrite).toHaveBeenCalledExactlyOnceWith({
+      bucket: 'shopOwnerRegister',
+      email: EMAIL,
+      turnstileToken: 'cf-token',
+      perEmailPerHour: 3
+    })
+  })
 
-	// The counter keys off the canonical address, so `Seller@…` and `seller@…` share one bucket —
-	// otherwise the per-address ceiling is bypassed by changing the capitalisation of the same inbox.
-	it('meters the canonical address, not the typed one', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
+  // The counter keys off the canonical address, so `Seller@…` and `seller@…` share one bucket —
+  // otherwise the per-address ceiling is bypassed by changing the capitalisation of the same inbox.
+  it('meters the canonical address, not the typed one', async () => {
+    await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(guardPublicWrite.mock.calls[0][0].email).toBe(EMAIL)
-	})
+    expect(guardPublicWrite.mock.calls[0][0].email).toBe(EMAIL)
+  })
 
-	// ⚠️ The guard runs before the submission, so a refused caller costs one Redis counter and nothing
-	// else: no bcrypt round, no pending record, and above all no mail. A guard that ran afterwards would
-	// meter the answer while the mail had already gone out.
-	it('submits nothing once the guard has refused', async () => {
-		guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
+  // ⚠️ The guard runs before the submission, so a refused caller costs one Redis counter and nothing
+  // else: no bcrypt round, no pending record, and above all no mail. A guard that ran afterwards would
+  // meter the answer while the mail had already gone out.
+  it('submits nothing once the guard has refused', async () => {
+    guardPublicWrite.mockRejectedValueOnce(new Error('Too many requests'))
 
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('Too many requests')
+    await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow('Too many requests')
 
-		expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
-	})
+    expect(submitShopOwnerRegistration).not.toHaveBeenCalled()
+  })
 
-	it('guards before it submits', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
+  it('guards before it submits', async () => {
+    await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(guardPublicWrite.mock.invocationCallOrder[0]).toBeLessThan(submitShopOwnerRegistration.mock.invocationCallOrder[0])
-	})
+    expect(guardPublicWrite.mock.invocationCallOrder[0]).toBeLessThan(submitShopOwnerRegistration.mock.invocationCallOrder[0])
+  })
 })
 
 describe('shopOwnerRegister — what it hands the flow', () => {
-	// ⚠️ **Nothing is written to MongoDB by this resolver** (ADR-042). A submitted registration is a Redis
-	// record with a three-day TTL and the `shopOwner` document is created by the confirmation click and by
-	// nothing else — so this resolver is the normalisation, the two length checks, the guard and a call.
-	// What the call then does about a free, a live or a closed address is `submitRegistration.test.mts`.
-	it('submits the canonical address and the password as typed', async () => {
-		await shopOwnerRegister.resolve(null, registerArgs)
+  // ⚠️ **Nothing is written to MongoDB by this resolver** (ADR-042). A submitted registration is a Redis
+  // record with a three-day TTL and the `shopOwner` document is created by the confirmation click and by
+  // nothing else — so this resolver is the normalisation, the two length checks, the guard and a call.
+  // What the call then does about a free, a live or a closed address is `submitRegistration.test.mts`.
+  it('submits the canonical address and the password as typed', async () => {
+    await shopOwnerRegister.resolve(null, registerArgs)
 
-		expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret')
-	})
+    expect(submitShopOwnerRegistration).toHaveBeenCalledExactlyOnceWith(EMAIL, 'sup3r-secret')
+  })
 
-	// ⚠️ **The seller flow, never the customer one.** Both take an address and a password and neither can
-	// tell them apart; the wrong binding here would open a `user` account for somebody who asked to sell,
-	// and would skip the approval queue that makes this mutation safe to expose in the first place.
-	it('submits through the seller binding', async () => {
-		const module = await import('../src/lib/registration/submitRegistration.mts')
+  // ⚠️ **The seller flow, never the customer one.** Both take an address and a password and neither can
+  // tell them apart; the wrong binding here would open a `user` account for somebody who asked to sell,
+  // and would skip the approval queue that makes this mutation safe to expose in the first place.
+  it('submits through the seller binding', async () => {
+    const module = await import('../src/lib/registration/submitRegistration.mts')
 
-		expect(submitShopOwnerRegistration).toBe(module.submitShopOwnerRegistration)
-	})
+    expect(submitShopOwnerRegistration).toBe(module.submitShopOwnerRegistration)
+  })
 
-	// ⚠️ **Every outcome answers `true`, and that is the security property rather than laziness.** A
-	// mutation that throws 409 for a taken address is an account-enumeration oracle: anybody can ask it,
-	// one address at a time, who sells here. The outcomes are distinguishable only in the inbox — and the
-	// approval state is never part of the answer either.
-	it('answers true whatever the flow found', async () => {
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
-	})
+  // ⚠️ **Every outcome answers `true`, and that is the security property rather than laziness.** A
+  // mutation that throws 409 for a taken address is an account-enumeration oracle: anybody can ask it,
+  // one address at a time, who sells here. The outcomes are distinguishable only in the inbox — and the
+  // approval state is never part of the answer either.
+  it('answers true whatever the flow found', async () => {
+    await expect(shopOwnerRegister.resolve(null, registerArgs)).resolves.toBe(true)
+  })
 
-	// `tryCatchRethrow` is what turns an unexpected driver error into a GraphQL error without leaking the
-	// driver's message; a failure has to keep failing, not be swallowed into a `true`.
-	it('rethrows rather than answering true when the flow fails', async () => {
-		submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
+  // `tryCatchRethrow` is what turns an unexpected driver error into a GraphQL error without leaking the
+  // driver's message; a failure has to keep failing, not be swallowed into a `true`.
+  it('rethrows rather than answering true when the flow fails', async () => {
+    submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
 
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow()
-	})
+    await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toThrow()
+  })
 
-	// The rethrow is a GraphQL error, not the driver's: a caller must not learn the host and port of the
-	// Redis node from a failed registration.
-	it('does not leak the driver’s message to the caller', async () => {
-		submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
+  // The rethrow is a GraphQL error, not the driver's: a caller must not learn the host and port of the
+  // Redis node from a failed registration.
+  it('does not leak the driver’s message to the caller', async () => {
+    submitShopOwnerRegistration.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
 
-		await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toMatchObject({
-			message: 'Internal Server Error'
-		})
-	})
+    await expect(shopOwnerRegister.resolve(null, registerArgs)).rejects.toMatchObject({
+      message: 'Internal Server Error'
+    })
+  })
 })

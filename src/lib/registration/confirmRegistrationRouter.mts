@@ -1,9 +1,9 @@
 import { isSafeRedirectTarget } from '@axiumine/koa-utils/lib/isSafeRedirectTarget'
 import type { RouterContext } from '@koa/router'
 import {
-	confirmShopOwnerRegistration,
-	confirmUserRegistration,
-	REGISTRATION_DONE_LINK
+  confirmShopOwnerRegistration,
+  confirmUserRegistration,
+  REGISTRATION_DONE_LINK
 } from '@lib/registration/confirmRegistration.mjs'
 
 /** Where a throw nobody planned for sends the browser. */
@@ -33,24 +33,24 @@ type TConfirmRegistration = (uEmail: string, hash: string) => Promise<void>
  * client that capitalised the link would otherwise find no record and report a dead link.
  */
 export const createConfirmRegistrationRouter =
-	(confirmRegistration: TConfirmRegistration) =>
-	async (ctx: RouterContext): Promise<void> => {
-		const { email, hash } = ctx.params
+  (confirmRegistration: TConfirmRegistration) =>
+  async (ctx: RouterContext): Promise<void> => {
+    const { email, hash } = ctx.params
 
-		try {
-			await confirmRegistration(email.toLowerCase().trim(), hash)
+    try {
+      await confirmRegistration(email.toLowerCase().trim(), hash)
 
-			ctx.redirect(REGISTRATION_DONE_LINK)
-		} catch (err: unknown) {
-			const link = (err as Error).message
+      ctx.redirect(REGISTRATION_DONE_LINK)
+    } catch (err: unknown) {
+      const link = (err as Error).message
 
-			if (isSafeRedirectTarget(link)) {
-				ctx.redirect(link)
-			} else {
-				ctx.redirect(ERROR_LINK)
-			}
-		}
-	}
+      if (isSafeRedirectTarget(link)) {
+        ctx.redirect(link)
+      } else {
+        ctx.redirect(ERROR_LINK)
+      }
+    }
+  }
 
 /** `GET /check/verify-email-user/:email/:hash`. */
 export const routerConfirmUserRegistration = createConfirmRegistrationRouter(confirmUserRegistration)

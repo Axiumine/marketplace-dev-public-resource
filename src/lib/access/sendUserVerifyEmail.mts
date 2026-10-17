@@ -25,6 +25,6 @@ export const USER_VERIFY_LINK_PATH = '/check/verify-email-user'
  * same reason every other one is: the template is the only place the intended set is written down.
  */
 export async function sendUserVerifyEmail(email: string, hash: string) {
-	const SocketLabsObj = new SocketLabsLib()
-	await SocketLabsObj.sendEmailVerify(email, hash, '', process.env.APP_DOMAIN_USER, USER_VERIFY_LINK_PATH)
+  const SocketLabsObj = new SocketLabsLib()
+  await SocketLabsObj.sendEmailVerify(email, hash, '', process.env.APP_DOMAIN_USER, USER_VERIFY_LINK_PATH)
 }

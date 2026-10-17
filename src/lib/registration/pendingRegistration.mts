@@ -30,39 +30,39 @@ export const MAX_VERIFY_ATTEMPTS = 5
  * sees a cross-slot script.
  */
 interface IPendingRegistrationScriptStore {
-	eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>
+  eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>
 }
 
 /** Where one tier's pending registration for one address lives, and the address as MongoDB will store it. */
 export interface IPendingSlot {
-	/** The Redis key. One key, because a multi-key operation throws `CROSSSLOT` on a cluster. */
-	key: string
-	/** The deterministic ciphertext of `login.email` — the key material and the value that gets inserted. */
-	email: Binary
+  /** The Redis key. One key, because a multi-key operation throws `CROSSSLOT` on a cluster. */
+  key: string
+  /** The deterministic ciphertext of `login.email` — the key material and the value that gets inserted. */
+  email: Binary
 }
 
 /** A registration between the form and the click. */
 export interface IPendingRegistration {
-	/**
-	 * The `_id` the account will be created with, minted at submit.
-	 *
-	 * ⚠️ **This is what makes a replayed confirmation safe.** The confirm step spans two stores and cannot
-	 * be atomic across them, so a crash between the commit and the `DEL` leaves a live key over a live
-	 * account. A replay then re-runs the transaction and the insert fails on the duplicate `_id` instead
-	 * of opening a second account for the same person (ADR-042).
-	 */
-	_id: Types.ObjectId
-	email: Binary
-	/** bcrypt, hashed at submit. `login.password` is not an encrypted field — it is already one-way. */
-	password: string
-	/** The 50-character confirmation hash the activation link carries. */
-	hash: string
-	/** When the form was submitted. Becomes `registeredAt`, and a resend does not move it. */
-	registeredAt: Date
-	/** When the current link was minted. A resend moves it. */
-	dateLastReq: Date
-	/** Wrong-hash strikes, starting at 1. */
-	requestTimes: number
+  /**
+   * The `_id` the account will be created with, minted at submit.
+   *
+   * ⚠️ **This is what makes a replayed confirmation safe.** The confirm step spans two stores and cannot
+   * be atomic across them, so a crash between the commit and the `DEL` leaves a live key over a live
+   * account. A replay then re-runs the transaction and the insert fails on the duplicate `_id` instead
+   * of opening a second account for the same person (ADR-042).
+   */
+  _id: Types.ObjectId
+  email: Binary
+  /** bcrypt, hashed at submit. `login.password` is not an encrypted field — it is already one-way. */
+  password: string
+  /** The 50-character confirmation hash the activation link carries. */
+  hash: string
+  /** When the form was submitted. Becomes `registeredAt`, and a resend does not move it. */
+  registeredAt: Date
+  /** When the current link was minted. A resend moves it. */
+  dateLastReq: Date
+  /** Wrong-hash strikes, starting at 1. */
+  requestTimes: number
 }
 
 /**
@@ -75,9 +75,9 @@ export interface IPendingRegistration {
  * independently-encrypted address.
  */
 export async function pendingSlot(target: IRegistrationTarget, uEmail: string): Promise<IPendingSlot> {
-	const email = await target.encryptEmail(uEmail)
+  const email = await target.encryptEmail(uEmail)
 
-	return { key: pendingRegistrationKey(target.tier, email), email }
+  return { key: pendingRegistrationKey(target.tier, email), email }
 }
 
 /**
@@ -89,9 +89,9 @@ export async function pendingSlot(target: IRegistrationTarget, uEmail: string): 
  * names it as a risk and this is the whole mitigation: there is one writer.
  */
 async function writeRecord(key: string, fields: Record<string, string>): Promise<void> {
-	await redisClient.hSet(key, fields)
+  await redisClient.hSet(key, fields)
 
-	await redisClient.expire(key, PENDING_TTL_SECONDS)
+  await redisClient.expire(key, PENDING_TTL_SECONDS)
 }
 
 /**
@@ -105,15 +105,15 @@ async function writeRecord(key: string, fields: Record<string, string>): Promise
  * is derived from cannot drift apart.
  */
 export async function writePendingRegistration(slot: IPendingSlot, record: Omit<IPendingRegistration, 'email'>): Promise<void> {
-	await writeRecord(slot.key, {
-		id: `${record._id}`,
-		email: Buffer.from(slot.email.buffer).toString('hex'),
-		password: record.password,
-		hash: record.hash,
-		registeredAt: `${record.registeredAt.getTime()}`,
-		dateLastReq: `${record.dateLastReq.getTime()}`,
-		requestTimes: `${record.requestTimes}`
-	})
+  await writeRecord(slot.key, {
+    id: `${record._id}`,
+    email: Buffer.from(slot.email.buffer).toString('hex'),
+    password: record.password,
+    hash: record.hash,
+    registeredAt: `${record.registeredAt.getTime()}`,
+    dateLastReq: `${record.dateLastReq.getTime()}`,
+    requestTimes: `${record.requestTimes}`
+  })
 }
 
 /**
@@ -128,24 +128,24 @@ export async function writePendingRegistration(slot: IPendingSlot, record: Omit<
  * MongoDB are the bytes Redis held.
  */
 export async function readPendingRegistration(key: string): Promise<IPendingRegistration | null> {
-	const record = await redisClient.hGetAll(key)
+  const record = await redisClient.hGetAll(key)
 
-	// `HGETALL` answers an empty hash for a key that does not exist rather than a nil, so the absence has
-	// to be read off a field. `hash` rather than the object's key count: it is the field the caller cannot
-	// do anything without.
-	if (record.hash === undefined) {
-		return null
-	}
+  // `HGETALL` answers an empty hash for a key that does not exist rather than a nil, so the absence has
+  // to be read off a field. `hash` rather than the object's key count: it is the field the caller cannot
+  // do anything without.
+  if (record.hash === undefined) {
+    return null
+  }
 
-	return {
-		_id: new Types.ObjectId(record.id),
-		email: new Binary(Buffer.from(record.email, 'hex'), Binary.SUBTYPE_ENCRYPTED),
-		password: record.password,
-		hash: record.hash,
-		registeredAt: new Date(Number(record.registeredAt)),
-		dateLastReq: new Date(Number(record.dateLastReq)),
-		requestTimes: Number(record.requestTimes)
-	}
+  return {
+    _id: new Types.ObjectId(record.id),
+    email: new Binary(Buffer.from(record.email, 'hex'), Binary.SUBTYPE_ENCRYPTED),
+    password: record.password,
+    hash: record.hash,
+    registeredAt: new Date(Number(record.registeredAt)),
+    dateLastReq: new Date(Number(record.dateLastReq)),
+    requestTimes: Number(record.requestTimes)
+  }
 }
 
 /**
@@ -173,14 +173,14 @@ return 1`
  * between the check and the increment. One round trip is what removes the gap.
  */
 export async function strikePendingRegistration(key: string): Promise<void> {
-	const store = redisClient as unknown as IPendingRegistrationScriptStore
+  const store = redisClient as unknown as IPendingRegistrationScriptStore
 
-	await store.eval(STRIKE_IF_EXISTS, { keys: [key], arguments: [] })
+  await store.eval(STRIKE_IF_EXISTS, { keys: [key], arguments: [] })
 }
 
 /** Removes a pending registration: consumed, or spent on five wrong hashes. */
 export async function deletePendingRegistration(key: string): Promise<void> {
-	await redisClient.del(key)
+  await redisClient.del(key)
 }
 
 /**
@@ -215,12 +215,12 @@ return 1`
  * signal that there is nothing left to mail a link for.
  */
 export async function renewPendingRegistration(slot: IPendingSlot, hash: string, at: Date): Promise<boolean> {
-	const store = redisClient as unknown as IPendingRegistrationScriptStore
+  const store = redisClient as unknown as IPendingRegistrationScriptStore
 
-	const renewed = await store.eval(RENEW_IF_EXISTS, {
-		keys: [slot.key],
-		arguments: [hash, `${at.getTime()}`, '1', `${PENDING_TTL_SECONDS}`]
-	})
+  const renewed = await store.eval(RENEW_IF_EXISTS, {
+    keys: [slot.key],
+    arguments: [hash, `${at.getTime()}`, '1', `${PENDING_TTL_SECONDS}`]
+  })
 
-	return renewed === 1
+  return renewed === 1
 }

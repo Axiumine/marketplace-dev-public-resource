@@ -39,28 +39,28 @@ export const MAX_BBOX_DEGREES = 10
 export const MAX_NEARBY = 200
 
 export interface IBoundingBox {
-	minLng: number
-	minLat: number
-	maxLng: number
-	maxLat: number
+  minLng: number
+  minLat: number
+  maxLng: number
+  maxLat: number
 }
 
 export interface INearPoint {
-	lng: number
-	lat: number
-	radiusMeters: number
+  lng: number
+  lat: number
+  radiusMeters: number
 }
 
 function assertLng(value: number, name: string): void {
-	if (!Number.isFinite(value) || value < -180 || value > 180) {
-		throw new Error(`${name} must be a longitude between -180 and 180`)
-	}
+  if (!Number.isFinite(value) || value < -180 || value > 180) {
+    throw new Error(`${name} must be a longitude between -180 and 180`)
+  }
 }
 
 function assertLat(value: number, name: string): void {
-	if (!Number.isFinite(value) || value < -90 || value > 90) {
-		throw new Error(`${name} must be a latitude between -90 and 90`)
-	}
+  if (!Number.isFinite(value) || value < -90 || value > 90) {
+    throw new Error(`${name} must be a latitude between -90 and 90`)
+  }
 }
 
 /**
@@ -77,26 +77,26 @@ function assertLat(value: number, name: string): void {
  * result looks like a working proximity search whose radius is simply ignored.
  */
 export function assertNearPoint(near: INearPoint): INearPoint {
-	assertLng(near.lng, 'near.lng')
-	assertLat(near.lat, 'near.lat')
+  assertLng(near.lng, 'near.lng')
+  assertLat(near.lat, 'near.lat')
 
-	if (!Number.isFinite(near.radiusMeters) || near.radiusMeters <= 0) {
-		throw new Error('near.radiusMeters must be greater than 0')
-	}
-	if (near.radiusMeters > MAX_RADIUS_METERS) {
-		throw new Error(`near.radiusMeters must not exceed ${MAX_RADIUS_METERS}`)
-	}
+  if (!Number.isFinite(near.radiusMeters) || near.radiusMeters <= 0) {
+    throw new Error('near.radiusMeters must be greater than 0')
+  }
+  if (near.radiusMeters > MAX_RADIUS_METERS) {
+    throw new Error(`near.radiusMeters must not exceed ${MAX_RADIUS_METERS}`)
+  }
 
-	return near
+  return near
 }
 
 /** The `address.position` filter for a validated point. Call `assertNearPoint` first. */
 export function centerSphereFilter(near: INearPoint) {
-	return {
-		$geoWithin: {
-			$centerSphere: [[near.lng, near.lat], near.radiusMeters / EARTH_RADIUS_METERS]
-		}
-	}
+  return {
+    $geoWithin: {
+      $centerSphere: [[near.lng, near.lat], near.radiusMeters / EARTH_RADIUS_METERS]
+    }
+  }
 }
 
 /**
@@ -119,35 +119,35 @@ export function centerSphereFilter(near: INearPoint) {
  * rectangle — which is what a naive polygon build would do, and it would appear to work.
  */
 export function bboxToPolygon(bbox: IBoundingBox) {
-	assertLng(bbox.minLng, 'bbox.minLng')
-	assertLng(bbox.maxLng, 'bbox.maxLng')
-	assertLat(bbox.minLat, 'bbox.minLat')
-	assertLat(bbox.maxLat, 'bbox.maxLat')
+  assertLng(bbox.minLng, 'bbox.minLng')
+  assertLng(bbox.maxLng, 'bbox.maxLng')
+  assertLat(bbox.minLat, 'bbox.minLat')
+  assertLat(bbox.maxLat, 'bbox.maxLat')
 
-	if (bbox.minLng >= bbox.maxLng) {
-		throw new Error('bbox.minLng must be smaller than bbox.maxLng — a box crossing the antimeridian is not supported')
-	}
-	if (bbox.minLat >= bbox.maxLat) {
-		throw new Error('bbox.minLat must be smaller than bbox.maxLat')
-	}
-	if (bbox.maxLng - bbox.minLng > MAX_BBOX_DEGREES || bbox.maxLat - bbox.minLat > MAX_BBOX_DEGREES) {
-		throw new Error(`bbox edges must not exceed ${MAX_BBOX_DEGREES} degrees — zoom in`)
-	}
+  if (bbox.minLng >= bbox.maxLng) {
+    throw new Error('bbox.minLng must be smaller than bbox.maxLng — a box crossing the antimeridian is not supported')
+  }
+  if (bbox.minLat >= bbox.maxLat) {
+    throw new Error('bbox.minLat must be smaller than bbox.maxLat')
+  }
+  if (bbox.maxLng - bbox.minLng > MAX_BBOX_DEGREES || bbox.maxLat - bbox.minLat > MAX_BBOX_DEGREES) {
+    throw new Error(`bbox edges must not exceed ${MAX_BBOX_DEGREES} degrees — zoom in`)
+  }
 
-	return {
-		$geoWithin: {
-			$geometry: {
-				type: 'Polygon',
-				coordinates: [
-					[
-						[bbox.minLng, bbox.minLat],
-						[bbox.maxLng, bbox.minLat],
-						[bbox.maxLng, bbox.maxLat],
-						[bbox.minLng, bbox.maxLat],
-						[bbox.minLng, bbox.minLat]
-					]
-				]
-			}
-		}
-	}
+  return {
+    $geoWithin: {
+      $geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [bbox.minLng, bbox.minLat],
+            [bbox.maxLng, bbox.minLat],
+            [bbox.maxLng, bbox.maxLat],
+            [bbox.minLng, bbox.maxLat],
+            [bbox.minLng, bbox.minLat]
+          ]
+        ]
+      }
+    }
+  }
 }

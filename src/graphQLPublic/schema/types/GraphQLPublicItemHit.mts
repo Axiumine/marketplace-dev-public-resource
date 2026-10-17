@@ -34,12 +34,12 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  * and another for "brass table lamp".
  */
 export const GraphQLPublicItemHit = new GraphQLObjectType({
-	name: 'GraphQLPublicItemHit',
-	fields: () => ({
-		_id: { type: new GraphQLNonNull(GraphQLID) },
-		idCategory: { type: new GraphQLNonNull(GraphQLID) },
-		...GraphQLItemFrag,
-		companySlug: { type: new GraphQLNonNull(GraphQLString) },
-		companyPublicName: { type: new GraphQLNonNull(GraphQLString) }
-	})
+  name: 'GraphQLPublicItemHit',
+  fields: () => ({
+    _id: { type: new GraphQLNonNull(GraphQLID) },
+    idCategory: { type: new GraphQLNonNull(GraphQLID) },
+    ...GraphQLItemFrag,
+    companySlug: { type: new GraphQLNonNull(GraphQLString) },
+    companyPublicName: { type: new GraphQLNonNull(GraphQLString) }
+  })
 })

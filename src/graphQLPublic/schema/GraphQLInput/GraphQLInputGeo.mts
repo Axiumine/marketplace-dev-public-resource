@@ -20,13 +20,13 @@ import { GraphQLFloat, GraphQLInputObjectType, GraphQLNonNull } from 'graphql'
  * lat/lng transposition is the one geo bug that produces no error and only wrong shops.
  */
 export const GraphQLInputBoundingBox = new GraphQLInputObjectType({
-	name: 'GraphQLInputBoundingBox',
-	fields: () => ({
-		minLng: { type: new GraphQLNonNull(GraphQLFloat) },
-		minLat: { type: new GraphQLNonNull(GraphQLFloat) },
-		maxLng: { type: new GraphQLNonNull(GraphQLFloat) },
-		maxLat: { type: new GraphQLNonNull(GraphQLFloat) }
-	})
+  name: 'GraphQLInputBoundingBox',
+  fields: () => ({
+    minLng: { type: new GraphQLNonNull(GraphQLFloat) },
+    minLat: { type: new GraphQLNonNull(GraphQLFloat) },
+    maxLng: { type: new GraphQLNonNull(GraphQLFloat) },
+    maxLat: { type: new GraphQLNonNull(GraphQLFloat) }
+  })
 })
 
 /**
@@ -37,10 +37,10 @@ export const GraphQLInputBoundingBox = new GraphQLInputObjectType({
  * user change it, and cannot explain why the result set is the size it is.
  */
 export const GraphQLInputNearPoint = new GraphQLInputObjectType({
-	name: 'GraphQLInputNearPoint',
-	fields: () => ({
-		lng: { type: new GraphQLNonNull(GraphQLFloat) },
-		lat: { type: new GraphQLNonNull(GraphQLFloat) },
-		radiusMeters: { type: new GraphQLNonNull(GraphQLFloat) }
-	})
+  name: 'GraphQLInputNearPoint',
+  fields: () => ({
+    lng: { type: new GraphQLNonNull(GraphQLFloat) },
+    lat: { type: new GraphQLNonNull(GraphQLFloat) },
+    radiusMeters: { type: new GraphQLNonNull(GraphQLFloat) }
+  })
 })

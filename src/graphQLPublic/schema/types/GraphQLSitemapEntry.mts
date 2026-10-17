@@ -10,12 +10,12 @@ import { GraphQLEnumType, GraphQLID, GraphQLList, GraphQLNonNull, GraphQLObjectT
  * means adding a member here, which is a schema change the frontend's codegen surfaces.
  */
 export const GraphQLSitemapKind = new GraphQLEnumType({
-	name: 'GraphQLSitemapKind',
-	values: {
-		COMPANY: { value: 'COMPANY', description: '/shop/:slug' },
-		ITEM: { value: 'ITEM', description: '/shop/:companySlug/item/:slug' },
-		CATEGORY: { value: 'CATEGORY', description: '/category/:slug and /category/:parentSlug/:slug' }
-	}
+  name: 'GraphQLSitemapKind',
+  values: {
+    COMPANY: { value: 'COMPANY', description: '/shop/:slug' },
+    ITEM: { value: 'ITEM', description: '/shop/:companySlug/item/:slug' },
+    CATEGORY: { value: 'CATEGORY', description: '/category/:slug and /category/:parentSlug/:slug' }
+  }
 })
 
 /**
@@ -41,10 +41,10 @@ export const GraphQLSitemapKind = new GraphQLEnumType({
  * none, because it is wrong only for the documents nobody remembered to cover.
  */
 export const GraphQLSitemapEntry = new GraphQLObjectType({
-	name: 'GraphQLSitemapEntry',
-	fields: () => ({
-		path: { type: new GraphQLNonNull(GraphQLString) }
-	})
+  name: 'GraphQLSitemapEntry',
+  fields: () => ({
+    path: { type: new GraphQLNonNull(GraphQLString) }
+  })
 })
 
 /**
@@ -62,9 +62,9 @@ export const GraphQLSitemapEntry = new GraphQLObjectType({
  * instead of shifting every subsequent page by one the way an offset walk would.
  */
 export const GraphQLSitemapPage = new GraphQLObjectType({
-	name: 'GraphQLSitemapPage',
-	fields: () => ({
-		nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLSitemapEntry))) },
-		nextAfterId: { type: GraphQLID }
-	})
+  name: 'GraphQLSitemapPage',
+  fields: () => ({
+    nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLSitemapEntry))) },
+    nextAfterId: { type: GraphQLID }
+  })
 })

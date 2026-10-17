@@ -4,9 +4,9 @@ import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { decryptDocument } from '@axiumine/marketplace-common/encryption/decryptDocument'
 import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
 import {
-	ENCRYPTED_FIELDS_SHOP_OWNER,
-	KEY_ALT_NAME_SHOP_OWNER,
-	KEY_ALT_NAME_USER
+  ENCRYPTED_FIELDS_SHOP_OWNER,
+  KEY_ALT_NAME_SHOP_OWNER,
+  KEY_ALT_NAME_USER
 } from '@axiumine/marketplace-common/encryption/encryptedFields'
 import { ALGORITHM_DETERMINISTIC } from '@axiumine/marketplace-common/encryption/EncryptionAlgorithm'
 import { encryptValue } from '@axiumine/marketplace-common/encryption/fieldEncryption'
@@ -40,44 +40,44 @@ dotenv.config()
  ****************************************************************************************/
 
 const { sent, sentLinks } = vi.hoisted(() => ({
-	/** `[method, address, …]` for every guard notification the flows raised. */
-	sent: [] as Array<Array<string | number>>,
-	/** Every activation link that would have been mailed, by tier. */
-	sentLinks: [] as Array<{ tier: string; email: string; hash: string }>
+  /** `[method, address, …]` for every guard notification the flows raised. */
+  sent: [] as Array<Array<string | number>>,
+  /** Every activation link that would have been mailed, by tier. */
+  sentLinks: [] as Array<{ tier: string; email: string; hash: string }>
 }))
 
 vi.mock('../../src/lib/registration/registrationMailer.mts', () => ({
-	registrationMailer: {
-		emailAlreadyValid: async (email: string) => void sent.push(['emailAlreadyValid', email]),
-		wrongHash: async (email: string, times: number) => void sent.push(['wrongHash', email, times]),
-		tooMuchVerifyRequests: async (email: string) => void sent.push(['tooMuchVerifyRequests', email]),
-		hashReqTooOld: async (email: string) => void sent.push(['hashReqTooOld', email]),
-		accountDisabled: async (email: string) => void sent.push(['accountDisabled', email]),
-		sendWelcome: async (email: string) => void sent.push(['sendWelcome', email])
-	}
+  registrationMailer: {
+    emailAlreadyValid: async (email: string) => void sent.push(['emailAlreadyValid', email]),
+    wrongHash: async (email: string, times: number) => void sent.push(['wrongHash', email, times]),
+    tooMuchVerifyRequests: async (email: string) => void sent.push(['tooMuchVerifyRequests', email]),
+    hashReqTooOld: async (email: string) => void sent.push(['hashReqTooOld', email]),
+    accountDisabled: async (email: string) => void sent.push(['accountDisabled', email]),
+    sendWelcome: async (email: string) => void sent.push(['sendWelcome', email])
+  }
 }))
 
 // `importOriginal` because the route path each module exports is imported by the tests below to build
 // the URL they call: replacing the send must not replace the literal that says where the link points.
 vi.mock('../../src/lib/access/sendUserVerifyEmail.mts', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../src/lib/access/sendUserVerifyEmail.mts')>()),
-	sendUserVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'user', email, hash })
+  ...(await importOriginal<typeof import('../../src/lib/access/sendUserVerifyEmail.mts')>()),
+  sendUserVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'user', email, hash })
 }))
 
 vi.mock('../../src/lib/access/sendShopOwnerVerifyEmail.mts', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../src/lib/access/sendShopOwnerVerifyEmail.mts')>()),
-	sendShopOwnerVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'shopOwner', email, hash })
+  ...(await importOriginal<typeof import('../../src/lib/access/sendShopOwnerVerifyEmail.mts')>()),
+  sendShopOwnerVerifyEmail: async (email: string, hash: string) => void sentLinks.push({ tier: 'shopOwner', email, hash })
 }))
 
 import { ENDPOINT } from '../../src/index.mts'
 import { SHOP_OWNER_VERIFY_LINK_PATH } from '../../src/lib/access/sendShopOwnerVerifyEmail.mts'
 import { USER_VERIFY_LINK_PATH } from '../../src/lib/access/sendUserVerifyEmail.mts'
 import {
-	MAX_VERIFY_ATTEMPTS,
-	PENDING_TTL_SECONDS,
-	pendingSlot,
-	readPendingRegistration,
-	writePendingRegistration
+  MAX_VERIFY_ATTEMPTS,
+  PENDING_TTL_SECONDS,
+  pendingSlot,
+  readPendingRegistration,
+  writePendingRegistration
 } from '../../src/lib/registration/pendingRegistration.mts'
 import { REGISTRATION_TARGET_SHOP_OWNER, REGISTRATION_TARGET_USER } from '../../src/lib/registration/registrationTargets.mts'
 import { submitShopOwnerRegistration, submitUserRegistration } from '../../src/lib/registration/submitRegistration.mts'
@@ -90,19 +90,19 @@ let base: string
 
 /** POST a GraphQL document to the real endpoint and return the parsed body. */
 async function gql(query: string, variables?: Record<string, unknown>) {
-	const res = await fetch(`${base}${ENDPOINT}`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ query, variables })
-	})
+  const res = await fetch(`${base}${ENDPOINT}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query, variables })
+  })
 
-	return {
-		status: res.status,
-		json: (await res.json()) as {
-			data?: Record<string, unknown>
-			errors?: Array<{ message: string; extensions?: Record<string, unknown> }>
-		}
-	}
+  return {
+    status: res.status,
+    json: (await res.json()) as {
+      data?: Record<string, unknown>
+      errors?: Array<{ message: string; extensions?: Record<string, unknown> }>
+    }
+  }
 }
 
 /****************************************************************************************
@@ -122,11 +122,11 @@ const pendingKeys: string[] = []
 
 /** The raw driver handle — only defined once start() has connected. */
 function db() {
-	return mongoose.connection.db!
+  return mongoose.connection.db!
 }
 
 function itestEmail() {
-	return `itest-${randomUUID()}@marketplace.invalid`
+  return `itest-${randomUUID()}@marketplace.invalid`
 }
 
 /** Fixed-length filler, not a real bcrypt hash: the validator only checks the 60-char length,
@@ -150,37 +150,37 @@ const FAKE_PASSWORD_HASH = '$2b$14$' + 'x'.repeat(53)
  * pre-seeded reset request or a pending verification link all need this second bucket.
  */
 async function seedShopOwner(login: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
-	const email = itestEmail()
-	const _id = new mongoose.Types.ObjectId()
+  const email = itestEmail()
+  const _id = new mongoose.Types.ObjectId()
 
-	// ⚠️ Encrypted after both override bags are spread in, and before the insert (ADR-029): a caller
-	// overriding `login.email` or `emailVerify.newEmailTmp` gets its own value encrypted too, and the
-	// fields those two name are `binData` subtype 6 in the collection. A plaintext seed would be a
-	// document no resolver on the platform can produce, and the validator refuses it outright.
-	await db()
-		.collection('shopOwner')
-		.insertOne(
-			await encryptDocument(
-				{
-					_id,
-					login: { email, password: FAKE_PASSWORD_HASH, ...login },
-					personalData: {
-						firstName: 'Itest',
-						lastName: 'PublicResource',
-						birth: { date: new Date('1985-06-15T00:00:00Z') },
-						address: { street: '2 Test Street', postalCode: '01103', city: 'Springfield', province: 'MA' },
-						contacts: { mobile: '3900000001', email }
-					},
-					registeredAt: new Date(),
-					...extra
-				},
-				ENCRYPTED_FIELDS_SHOP_OWNER,
-				KEY_ALT_NAME_SHOP_OWNER
-			)
-		)
-	seededShopOwnerIds.push(_id)
+  // ⚠️ Encrypted after both override bags are spread in, and before the insert (ADR-029): a caller
+  // overriding `login.email` or `emailVerify.newEmailTmp` gets its own value encrypted too, and the
+  // fields those two name are `binData` subtype 6 in the collection. A plaintext seed would be a
+  // document no resolver on the platform can produce, and the validator refuses it outright.
+  await db()
+    .collection('shopOwner')
+    .insertOne(
+      await encryptDocument(
+        {
+          _id,
+          login: { email, password: FAKE_PASSWORD_HASH, ...login },
+          personalData: {
+            firstName: 'Itest',
+            lastName: 'PublicResource',
+            birth: { date: new Date('1985-06-15T00:00:00Z') },
+            address: { street: '2 Test Street', postalCode: '01103', city: 'Springfield', province: 'MA' },
+            contacts: { mobile: '3900000001', email }
+          },
+          registeredAt: new Date(),
+          ...extra
+        },
+        ENCRYPTED_FIELDS_SHOP_OWNER,
+        KEY_ALT_NAME_SHOP_OWNER
+      )
+    )
+  seededShopOwnerIds.push(_id)
 
-	return { _id, email }
+  return { _id, email }
 }
 
 /**
@@ -196,19 +196,19 @@ async function seedShopOwner(login: Record<string, unknown> = {}, extra: Record<
  * ciphertext is really on disk.
  */
 async function shopOwnerById(_id: mongoose.Types.ObjectId) {
-	const stored = await db().collection('shopOwner').findOne({ _id })
+  const stored = await db().collection('shopOwner').findOne({ _id })
 
-	await decryptDocument(stored)
+  await decryptDocument(stored)
 
-	return stored
+  return stored
 }
 
 function shopOwnerByIdEncrypted(_id: mongoose.Types.ObjectId) {
-	return db().collection('shopOwner').findOne({ _id })
+  return db().collection('shopOwner').findOne({ _id })
 }
 
 beforeAll(async () => {
-	;({ httpServer, base } = await bootHttpServer())
+  ;({ httpServer, base } = await bootHttpServer())
 })
 
 /**
@@ -219,98 +219,98 @@ beforeAll(async () => {
  * sits in the cluster for its whole TTL, which for a refresh session is 90 days.
  */
 async function drainSafely(what: string, remove: () => Promise<unknown>) {
-	try {
-		await remove()
-	} catch (error) {
-		console.error(`[afterAll] cleanup failed for ${what}:`, error)
-	}
+  try {
+    await remove()
+  } catch (error) {
+    console.error(`[afterAll] cleanup failed for ${what}:`, error)
+  }
 }
 
 afterAll(async () => {
-	// Drop whatever this run created while the handles are still open. One document per id — the
-	// index that would matter for a multi-key operation (CROSSSLOT) is a Redis concern; this loop
-	// only ever touches MongoDB, but it keeps the same "one at a time" shape as the Redis cleanups
-	// elsewhere in the platform for consistency.
-	for (const _id of seededShopOwnerIds) {
-		await drainSafely(`shopOwner ${_id.toString()}`, () => db().collection('shopOwner').deleteOne({ _id }))
-	}
-	for (const { collection, _id } of registeredIds) {
-		await drainSafely(`${collection} ${_id.toString()}`, () => db().collection(collection).deleteOne({ _id }))
-	}
-	// Redis last, and one key at a time: a multi-key DEL is a CROSSSLOT error on a cluster.
-	for (const key of pendingKeys) {
-		await drainSafely(`pending registration ${key}`, () => redisClient.del(key))
-	}
-	await new Promise<void>((resolve) => httpServer.close(() => resolve()))
-	await redisClient.close()
-	await mongoose.disconnect()
+  // Drop whatever this run created while the handles are still open. One document per id — the
+  // index that would matter for a multi-key operation (CROSSSLOT) is a Redis concern; this loop
+  // only ever touches MongoDB, but it keeps the same "one at a time" shape as the Redis cleanups
+  // elsewhere in the platform for consistency.
+  for (const _id of seededShopOwnerIds) {
+    await drainSafely(`shopOwner ${_id.toString()}`, () => db().collection('shopOwner').deleteOne({ _id }))
+  }
+  for (const { collection, _id } of registeredIds) {
+    await drainSafely(`${collection} ${_id.toString()}`, () => db().collection(collection).deleteOne({ _id }))
+  }
+  // Redis last, and one key at a time: a multi-key DEL is a CROSSSLOT error on a cluster.
+  for (const key of pendingKeys) {
+    await drainSafely(`pending registration ${key}`, () => redisClient.del(key))
+  }
+  await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+  await redisClient.close()
+  await mongoose.disconnect()
 })
 
 describe('public-resource service (integration, real MongoDB + real Redis cluster)', () => {
-	// start() is what wires both datasources; asserting the live handles is what makes the rest of
-	// this file an integration suite rather than an in-process schema test.
-	it('has a live MongoDB connection', () => {
-		expect(mongoose.connection.readyState).toBe(1)
-	})
+  // start() is what wires both datasources; asserting the live handles is what makes the rest of
+  // this file an integration suite rather than an in-process schema test.
+  it('has a live MongoDB connection', () => {
+    expect(mongoose.connection.readyState).toBe(1)
+  })
 
-	it('has a live Redis cluster connection, round-tripping a key in the isolated namespace', async () => {
-		const key = `${REDIS_KEY}itest:${randomUUID()}`
+  it('has a live Redis cluster connection, round-tripping a key in the isolated namespace', async () => {
+    const key = `${REDIS_KEY}itest:${randomUUID()}`
 
-		// EX so this one cannot outlive the run. It is never registered for the afterAll drain, so
-		// without a TTL a hard kill — or a throw on the assertion below — strands it on the cluster
-		// forever. 60s is far longer than the round trip and short enough to be self-cleaning.
-		await redisClient.set(key, 'pong', { EX: 60 })
-		expect(await redisClient.get(key)).toBe('pong')
+    // EX so this one cannot outlive the run. It is never registered for the afterAll drain, so
+    // without a TTL a hard kill — or a throw on the assertion below — strands it on the cluster
+    // forever. 60s is far longer than the round trip and short enough to be self-cleaning.
+    await redisClient.set(key, 'pong', { EX: 60 })
+    expect(await redisClient.get(key)).toBe('pong')
 
-		await redisClient.del(key)
-		expect(await redisClient.get(key)).toBeNull()
-	})
+    await redisClient.del(key)
+    expect(await redisClient.get(key)).toBeNull()
+  })
 })
 
 describe('GraphQL over HTTP', () => {
-	it('serves the no-args query', async () => {
-		const { status, json } = await gql('{ publicHelloNoArgs { txt } }')
+  it('serves the no-args query', async () => {
+    const { status, json } = await gql('{ publicHelloNoArgs { txt } }')
 
-		expect(status).toBe(200)
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ publicHelloNoArgs: { txt: 'Hello from publicHelloNoArgs' } })
-	})
+    expect(status).toBe(200)
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ publicHelloNoArgs: { txt: 'Hello from publicHelloNoArgs' } })
+  })
 
-	it('serves the args query', async () => {
-		const { json } = await gql('query ($name: String!) { publicHelloArgs(name: $name) { txt } }', { name: 'Luigi' })
+  it('serves the args query', async () => {
+    const { json } = await gql('query ($name: String!) { publicHelloArgs(name: $name) { txt } }', { name: 'Luigi' })
 
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ publicHelloArgs: { txt: 'Hello from publicHelloArgs - Luigi!' } })
-	})
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ publicHelloArgs: { txt: 'Hello from publicHelloArgs - Luigi!' } })
+  })
 
-	it('serves the no-args mutation', async () => {
-		const { json } = await gql('mutation { publicMutNoArgs }')
+  it('serves the no-args mutation', async () => {
+    const { json } = await gql('mutation { publicMutNoArgs }')
 
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ publicMutNoArgs: 'publicMutNoArgs' })
-	})
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ publicMutNoArgs: 'publicMutNoArgs' })
+  })
 
-	it('serves the args mutation', async () => {
-		const { json } = await gql('mutation ($name: String!) { publicMutArgs(name: $name) }', { name: 'Mark' })
+  it('serves the args mutation', async () => {
+    const { json } = await gql('mutation ($name: String!) { publicMutArgs(name: $name) }', { name: 'Mark' })
 
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ publicMutArgs: 'publicMutArgs Mark' })
-	})
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ publicMutArgs: 'publicMutArgs Mark' })
+  })
 
-	// Introspection stays open outside production (buildValidationRules returns no rules), and the
-	// schema it reports is the one really assembled in createServer — not a copy rebuilt by a test.
-	it('exposes the assembled schema through introspection', async () => {
-		const { json } = await gql('{ __schema { queryType { name } mutationType { name } } }')
+  // Introspection stays open outside production (buildValidationRules returns no rules), and the
+  // schema it reports is the one really assembled in createServer — not a copy rebuilt by a test.
+  it('exposes the assembled schema through introspection', async () => {
+    const { json } = await gql('{ __schema { queryType { name } mutationType { name } } }')
 
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ __schema: { queryType: { name: 'QueriesPublic' }, mutationType: { name: 'MutationsPublic' } } })
-	})
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ __schema: { queryType: { name: 'QueriesPublic' }, mutationType: { name: 'MutationsPublic' } } })
+  })
 
-	it('rejects a GET on the GraphQL endpoint (csrfPrevention / method not allowed)', async () => {
-		const res = await fetch(`${base}${ENDPOINT}?query=%7B__typename%7D`)
+  it('rejects a GET on the GraphQL endpoint (csrfPrevention / method not allowed)', async () => {
+    const res = await fetch(`${base}${ENDPOINT}?query=%7B__typename%7D`)
 
-		expect(res.status).toBeGreaterThanOrEqual(400)
-	})
+    expect(res.status).toBeGreaterThanOrEqual(400)
+  })
 })
 
 // Both halves of the reset really hit MongoDB — including mongoose.startSession() and
@@ -318,28 +318,28 @@ describe('GraphQL over HTTP', () => {
 // resetPwd answers true without persisting or mailing anything (no enumeration oracle), and
 // updatePwd answers 403 for the same reason. Neither writes.
 describe('reset-password flow bound to the shopOwner collection', () => {
-	const unknownEmail = `itest-${randomUUID()}@marketplace.invalid`
+  const unknownEmail = `itest-${randomUUID()}@marketplace.invalid`
 
-	it('resetPwd answers true for an unknown address, without sending anything', async () => {
-		const { json } = await gql('mutation ($email: String!) { resetPwd(email: $email) }', { email: unknownEmail })
+  it('resetPwd answers true for an unknown address, without sending anything', async () => {
+    const { json } = await gql('mutation ($email: String!) { resetPwd(email: $email) }', { email: unknownEmail })
 
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ resetPwd: true })
-	})
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ resetPwd: true })
+  })
 
-	it('updatePwd is forbidden for an unknown address', async () => {
-		const { json } = await gql(
-			'mutation ($e: String!, $h: String!, $p: String!) { updatePwd(email: $e, hash: $h, password: $p) }',
-			{
-				e: unknownEmail,
-				h: 'x'.repeat(32),
-				p: 'Str0ngPwd!2026'
-			}
-		)
+  it('updatePwd is forbidden for an unknown address', async () => {
+    const { json } = await gql(
+      'mutation ($e: String!, $h: String!, $p: String!) { updatePwd(email: $e, hash: $h, password: $p) }',
+      {
+        e: unknownEmail,
+        h: 'x'.repeat(32),
+        p: 'Str0ngPwd!2026'
+      }
+    )
 
-		expect(json.errors).toBeDefined()
-		expect(json.data?.updatePwd ?? null).toBeNull()
-	})
+    expect(json.errors).toBeDefined()
+    expect(json.data?.updatePwd ?? null).toBeNull()
+  })
 })
 
 // The describe above only ever reaches the "email not found" branch of resetPwd/updatePwd — the
@@ -358,111 +358,111 @@ describe('reset-password flow bound to the shopOwner collection', () => {
 // "uncovered" in the report rather than exercised here without a decision from whoever owns that
 // account.
 describe('resetPwd / updatePwd against a real seeded shopOwner (refusal branches)', () => {
-	const resetPwdMutation = 'mutation ($email: String!) { resetPwd(email: $email) }'
-	const updatePwdMutation = 'mutation ($e: String!, $h: String!, $p: String!) { updatePwd(email: $e, hash: $h, password: $p) }'
+  const resetPwdMutation = 'mutation ($email: String!) { resetPwd(email: $email) }'
+  const updatePwdMutation = 'mutation ($e: String!, $h: String!, $p: String!) { updatePwd(email: $e, hash: $h, password: $p) }'
 
-	/**
-	 * Every refusal branch below makes the same three claims — the mutation errors, it resolves to
-	 * null, and the seeded hash is still the stored password afterwards — and differs only in *why*
-	 * the request was refused. The document is returned so each test can add the check that is its
-	 * own reason for existing.
-	 */
-	async function expectUpdatePwdRefused(_id: mongoose.Types.ObjectId, email: string, hash: string) {
-		const { json } = await gql(updatePwdMutation, { e: email, h: hash, p: 'Str0ngPwd!2026' })
-		expect(json.errors).toBeDefined()
-		expect(json.data?.updatePwd ?? null).toBeNull()
+  /**
+   * Every refusal branch below makes the same three claims — the mutation errors, it resolves to
+   * null, and the seeded hash is still the stored password afterwards — and differs only in *why*
+   * the request was refused. The document is returned so each test can add the check that is its
+   * own reason for existing.
+   */
+  async function expectUpdatePwdRefused(_id: mongoose.Types.ObjectId, email: string, hash: string) {
+    const { json } = await gql(updatePwdMutation, { e: email, h: hash, p: 'Str0ngPwd!2026' })
+    expect(json.errors).toBeDefined()
+    expect(json.data?.updatePwd ?? null).toBeNull()
 
-		const doc = await shopOwnerById(_id)
-		expect(doc?.login.password).toBe(FAKE_PASSWORD_HASH)
+    const doc = await shopOwnerById(_id)
+    expect(doc?.login.password).toBe(FAKE_PASSWORD_HASH)
 
-		return doc
-	}
+    return doc
+  }
 
-	it('resetPwd leaves a disabled account untouched: true is returned, no resetPwd sub-document is written', async () => {
-		// ⚠️ `disabledReason` is not decoration: the validator carries `dependencies: { disabled:
-		// ['disabledReason'] }`, so a suspension with no reason is a document the server refuses
-		// outright (the platform owner's rule of 2026-08-29). A seed is held to it like any other write.
-		const { _id, email } = await seedShopOwner({}, { disabled: true, disabledReason: 'itest suspension' })
+  it('resetPwd leaves a disabled account untouched: true is returned, no resetPwd sub-document is written', async () => {
+    // ⚠️ `disabledReason` is not decoration: the validator carries `dependencies: { disabled:
+    // ['disabledReason'] }`, so a suspension with no reason is a document the server refuses
+    // outright (the platform owner's rule of 2026-08-29). A seed is held to it like any other write.
+    const { _id, email } = await seedShopOwner({}, { disabled: true, disabledReason: 'itest suspension' })
 
-		const { json } = await gql(resetPwdMutation, { email })
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ resetPwd: true })
+    const { json } = await gql(resetPwdMutation, { email })
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ resetPwd: true })
 
-		// getResetPwd (see koa-utils getResetPwd.mjs) answers null for a disabled account, exactly
-		// as it does for an unknown one — so resetPwd returns before saveResetReq is ever called.
-		const doc = await shopOwnerById(_id)
-		expect(doc?.resetPwd).toBeUndefined()
-	})
+    // getResetPwd (see koa-utils getResetPwd.mjs) answers null for a disabled account, exactly
+    // as it does for an unknown one — so resetPwd returns before saveResetReq is ever called.
+    const doc = await shopOwnerById(_id)
+    expect(doc?.resetPwd).toBeUndefined()
+  })
 
-	it('resetPwd leaves a deleted account untouched: true is returned, no resetPwd sub-document is written', async () => {
-		const { _id, email } = await seedShopOwner({}, { deleted: new Date() })
+  it('resetPwd leaves a deleted account untouched: true is returned, no resetPwd sub-document is written', async () => {
+    const { _id, email } = await seedShopOwner({}, { deleted: new Date() })
 
-		const { json } = await gql(resetPwdMutation, { email })
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ resetPwd: true })
+    const { json } = await gql(resetPwdMutation, { email })
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ resetPwd: true })
 
-		const doc = await shopOwnerById(_id)
-		expect(doc?.resetPwd).toBeUndefined()
-	})
+    const doc = await shopOwnerById(_id)
+    expect(doc?.resetPwd).toBeUndefined()
+  })
 
-	// The 10-minute throttle (see koa-utils resetPwd.mjs) compares "now" against a real stored
-	// resetDateReq: only a document already carrying one, read back through Mongo, can prove the
-	// "too soon, don't regenerate" branch instead of the "first request" one.
-	it('resetPwd throttles a resend requested less than 10 minutes after the last one: the stored hash is left exactly as seeded', async () => {
-		const seededHash = 'a'.repeat(50)
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ resetPwd: { resetDateReq: new Date(Date.now() - 2 * 60 * 1000), resetHash: seededHash } }
-		)
+  // The 10-minute throttle (see koa-utils resetPwd.mjs) compares "now" against a real stored
+  // resetDateReq: only a document already carrying one, read back through Mongo, can prove the
+  // "too soon, don't regenerate" branch instead of the "first request" one.
+  it('resetPwd throttles a resend requested less than 10 minutes after the last one: the stored hash is left exactly as seeded', async () => {
+    const seededHash = 'a'.repeat(50)
+    const { _id, email } = await seedShopOwner(
+      {},
+      { resetPwd: { resetDateReq: new Date(Date.now() - 2 * 60 * 1000), resetHash: seededHash } }
+    )
 
-		const { json } = await gql(resetPwdMutation, { email })
-		expect(json.errors).toBeUndefined()
-		expect(json.data).toEqual({ resetPwd: true })
+    const { json } = await gql(resetPwdMutation, { email })
+    expect(json.errors).toBeUndefined()
+    expect(json.data).toEqual({ resetPwd: true })
 
-		const doc = await shopOwnerById(_id)
-		expect(doc?.resetPwd.resetHash).toBe(seededHash)
-	})
+    const doc = await shopOwnerById(_id)
+    expect(doc?.resetPwd.resetHash).toBe(seededHash)
+  })
 
-	it('updatePwd refuses a wrong hash: 403, and neither the password nor the pending request are touched', async () => {
-		const seededHash = 'b'.repeat(50)
-		const { _id, email } = await seedShopOwner({}, { resetPwd: { resetDateReq: new Date(), resetHash: seededHash } })
+  it('updatePwd refuses a wrong hash: 403, and neither the password nor the pending request are touched', async () => {
+    const seededHash = 'b'.repeat(50)
+    const { _id, email } = await seedShopOwner({}, { resetPwd: { resetDateReq: new Date(), resetHash: seededHash } })
 
-		const doc = await expectUpdatePwdRefused(_id, email, 'c'.repeat(50))
-		expect(doc?.resetPwd.resetHash).toBe(seededHash)
-	})
+    const doc = await expectUpdatePwdRefused(_id, email, 'c'.repeat(50))
+    expect(doc?.resetPwd.resetHash).toBe(seededHash)
+  })
 
-	it('updatePwd refuses a link older than 60 minutes even with the correct hash: 403, nothing is touched', async () => {
-		const seededHash = 'd'.repeat(50)
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ resetPwd: { resetDateReq: new Date(Date.now() - 61 * 60 * 1000), resetHash: seededHash } }
-		)
+  it('updatePwd refuses a link older than 60 minutes even with the correct hash: 403, nothing is touched', async () => {
+    const seededHash = 'd'.repeat(50)
+    const { _id, email } = await seedShopOwner(
+      {},
+      { resetPwd: { resetDateReq: new Date(Date.now() - 61 * 60 * 1000), resetHash: seededHash } }
+    )
 
-		const doc = await expectUpdatePwdRefused(_id, email, seededHash)
-		expect(doc?.resetPwd.resetHash).toBe(seededHash)
-	})
+    const doc = await expectUpdatePwdRefused(_id, email, seededHash)
+    expect(doc?.resetPwd.resetHash).toBe(seededHash)
+  })
 
-	// getResetPwd answers resetHash: null whenever resetDateReq is undefined — i.e. an account that
-	// exists but has never requested a reset. koa-utils answers the SAME 403 as an unknown address
-	// on purpose (see applyPasswordReset's own comment): a different status here would let
-	// updatePwd enumerate registered accounts by which email holds a pending reset.
-	it('updatePwd refuses an account with no pending reset request at all: the same 403 as an unknown address', async () => {
-		const { email } = await seedShopOwner()
+  // getResetPwd answers resetHash: null whenever resetDateReq is undefined — i.e. an account that
+  // exists but has never requested a reset. koa-utils answers the SAME 403 as an unknown address
+  // on purpose (see applyPasswordReset's own comment): a different status here would let
+  // updatePwd enumerate registered accounts by which email holds a pending reset.
+  it('updatePwd refuses an account with no pending reset request at all: the same 403 as an unknown address', async () => {
+    const { email } = await seedShopOwner()
 
-		const { json } = await gql(updatePwdMutation, { e: email, h: 'e'.repeat(50), p: 'Str0ngPwd!2026' })
-		expect(json.errors).toBeDefined()
-		expect(json.data?.updatePwd ?? null).toBeNull()
-	})
+    const { json } = await gql(updatePwdMutation, { e: email, h: 'e'.repeat(50), p: 'Str0ngPwd!2026' })
+    expect(json.errors).toBeDefined()
+    expect(json.data?.updatePwd ?? null).toBeNull()
+  })
 
-	it('updatePwd refuses a disabled account even with a correct, unexpired hash: password is left exactly as seeded', async () => {
-		const seededHash = 'f'.repeat(50)
-		const { _id, email } = await seedShopOwner(
-			{},
-			{ disabled: true, disabledReason: 'itest suspension', resetPwd: { resetDateReq: new Date(), resetHash: seededHash } }
-		)
+  it('updatePwd refuses a disabled account even with a correct, unexpired hash: password is left exactly as seeded', async () => {
+    const seededHash = 'f'.repeat(50)
+    const { _id, email } = await seedShopOwner(
+      {},
+      { disabled: true, disabledReason: 'itest suspension', resetPwd: { resetDateReq: new Date(), resetHash: seededHash } }
+    )
 
-		await expectUpdatePwdRefused(_id, email, seededHash)
-	})
+    await expectUpdatePwdRefused(_id, email, seededHash)
+  })
 })
 
 /****************************************************************************************
@@ -502,18 +502,18 @@ type Tier = 'user' | 'shopOwner'
  * notices.
  */
 const TARGETS = {
-	user: {
-		keyAltName: KEY_ALT_NAME_USER,
-		linkPath: USER_VERIFY_LINK_PATH,
-		submit: submitUserRegistration,
-		target: REGISTRATION_TARGET_USER
-	},
-	shopOwner: {
-		keyAltName: KEY_ALT_NAME_SHOP_OWNER,
-		linkPath: SHOP_OWNER_VERIFY_LINK_PATH,
-		submit: submitShopOwnerRegistration,
-		target: REGISTRATION_TARGET_SHOP_OWNER
-	}
+  user: {
+    keyAltName: KEY_ALT_NAME_USER,
+    linkPath: USER_VERIFY_LINK_PATH,
+    submit: submitUserRegistration,
+    target: REGISTRATION_TARGET_USER
+  },
+  shopOwner: {
+    keyAltName: KEY_ALT_NAME_SHOP_OWNER,
+    linkPath: SHOP_OWNER_VERIFY_LINK_PATH,
+    submit: submitShopOwnerRegistration,
+    target: REGISTRATION_TARGET_SHOP_OWNER
+  }
 } as const
 
 /**
@@ -528,20 +528,20 @@ const TARGETS = {
  * come through here.
  */
 async function submitRegistration(tier: Tier, email = itestEmail(), password = REGISTRATION_PASSWORD) {
-	sent.length = 0
-	sentLinks.length = 0
+  sent.length = 0
+  sentLinks.length = 0
 
-	await TARGETS[tier].submit(email, password)
+  await TARGETS[tier].submit(email, password)
 
-	const slot = await pendingSlot(TARGETS[tier].target, email)
-	pendingKeys.push(slot.key)
+  const slot = await pendingSlot(TARGETS[tier].target, email)
+  pendingKeys.push(slot.key)
 
-	const record = await readPendingRegistration(slot.key)
-	if (record === null) throw new Error(`submit wrote no pending record for ${email}`)
+  const record = await readPendingRegistration(slot.key)
+  if (record === null) throw new Error(`submit wrote no pending record for ${email}`)
 
-	registeredIds.push({ collection: tier, _id: record._id })
+  registeredIds.push({ collection: tier, _id: record._id })
 
-	return { email, password, record, slot }
+  return { email, password, record, slot }
 }
 
 /**
@@ -553,19 +553,19 @@ async function submitRegistration(tier: Tier, email = itestEmail(), password = R
  * failure whichever test hit it.
  */
 async function click(tier: Tier, email: string, hash: string) {
-	const res = await fetch(`${base}${TARGETS[tier].linkPath}/${encodeURIComponent(email)}/${hash}`)
+  const res = await fetch(`${base}${TARGETS[tier].linkPath}/${encodeURIComponent(email)}/${hash}`)
 
-	expect(res.redirected).toBe(true)
+  expect(res.redirected).toBe(true)
 
-	return res.url.slice(base.length)
+  return res.url.slice(base.length)
 }
 
 /** Every document of a tier holding an address, found the only way there is: by the ciphertext. */
 async function accountsByEmail(tier: Tier, email: string) {
-	return await db()
-		.collection(tier)
-		.find({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, TARGETS[tier].keyAltName) })
-		.toArray()
+  return await db()
+    .collection(tier)
+    .find({ 'login.email': await encryptValue(email, ALGORITHM_DETERMINISTIC, TARGETS[tier].keyAltName) })
+    .toArray()
 }
 
 /**
@@ -575,331 +575,331 @@ async function accountsByEmail(tier: Tier, email: string) {
  * `deletedBy` left behind on a live account names an admin who closed something that is open.
  */
 async function closeShopOwner(_id: mongoose.Types.ObjectId) {
-	await db()
-		.collection('shopOwner')
-		.updateOne({ _id }, { $set: { deleted: new Date(), deletedBy: new mongoose.Types.ObjectId() } })
+  await db()
+    .collection('shopOwner')
+    .updateOne({ _id }, { $set: { deleted: new Date(), deletedBy: new mongoose.Types.ObjectId() } })
 }
 
 describe('a submitted registration is a Redis record and nothing else', () => {
-	// ⚠️ The claim ADR-042 rests on, and the one the platform owner asked for in those words: a closed
-	// account's address is reclaimed "when he will click the link to confirm the email, not before
-	// that". An anonymous form post is not a click, so until one arrives nothing exists in MongoDB.
-	it('writes no document, and a key that expires on its own', async () => {
-		const { email, slot } = await submitRegistration('user')
+  // ⚠️ The claim ADR-042 rests on, and the one the platform owner asked for in those words: a closed
+  // account's address is reclaimed "when he will click the link to confirm the email, not before
+  // that". An anonymous form post is not a click, so until one arrives nothing exists in MongoDB.
+  it('writes no document, and a key that expires on its own', async () => {
+    const { email, slot } = await submitRegistration('user')
 
-		await expect(accountsByEmail('user', email)).resolves.toEqual([])
+    await expect(accountsByEmail('user', email)).resolves.toEqual([])
 
-		// The three-day window is the key's own TTL now, so an abandoned registration is not a state
-		// anybody has to notice — which is what the old lazily-evaluated guard could never manage.
-		const ttl = await redisClient.ttl(slot.key)
-		expect(ttl).toBeLessThanOrEqual(PENDING_TTL_SECONDS)
-		expect(ttl).toBeGreaterThan(PENDING_TTL_SECONDS - 60)
-	})
+    // The three-day window is the key's own TTL now, so an abandoned registration is not a state
+    // anybody has to notice — which is what the old lazily-evaluated guard could never manage.
+    const ttl = await redisClient.ttl(slot.key)
+    expect(ttl).toBeLessThanOrEqual(PENDING_TTL_SECONDS)
+    expect(ttl).toBeGreaterThan(PENDING_TTL_SECONDS - 60)
+  })
 
-	// ⚠️ ADR-043, against the real cipher: the record holds the address as the deterministic
-	// ciphertext MongoDB indexes, so the same bytes key the record, find the account and get inserted.
-	// A `sha256` would key the record just as well and would put a second representation of the
-	// address on this path; a plaintext one would put personal data in Redis in the clear.
-	it('keeps the address as the ciphertext the collection indexes, never in the clear', async () => {
-		const { email, slot } = await submitRegistration('user')
+  // ⚠️ ADR-043, against the real cipher: the record holds the address as the deterministic
+  // ciphertext MongoDB indexes, so the same bytes key the record, find the account and get inserted.
+  // A `sha256` would key the record just as well and would put a second representation of the
+  // address on this path; a plaintext one would put personal data in Redis in the clear.
+  it('keeps the address as the ciphertext the collection indexes, never in the clear', async () => {
+    const { email, slot } = await submitRegistration('user')
 
-		const stored = await redisClient.hGetAll(slot.key)
-		const ciphertext = await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER)
+    const stored = await redisClient.hGetAll(slot.key)
+    const ciphertext = await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER)
 
-		expect(stored.email).toBe(Buffer.from(ciphertext.buffer).toString('hex'))
+    expect(stored.email).toBe(Buffer.from(ciphertext.buffer).toString('hex'))
 
-		// The local part alone, so this fails on a record that carries the address in any field at all
-		// rather than only on one that carries it whole.
-		expect(JSON.stringify(stored)).not.toContain(email.split('@')[0])
-	})
+    // The local part alone, so this fails on a record that carries the address in any field at all
+    // rather than only on one that carries it whole.
+    expect(JSON.stringify(stored)).not.toContain(email.split('@')[0])
+  })
 
-	// bcrypt at submit rather than at confirm, so the plaintext dies with the request that carried it.
-	// It is also what makes the confirm's `insertMany` correct: no `save` middleware runs there, so
-	// this value lands in `login.password` exactly as it is — hashing in both places is what once stored
-	// `bcrypt(bcrypt(password))` and opened accounts nobody could log in to.
-	it('bcrypts the password once, at submit', async () => {
-		const { password, slot } = await submitRegistration('user')
+  // bcrypt at submit rather than at confirm, so the plaintext dies with the request that carried it.
+  // It is also what makes the confirm's `insertMany` correct: no `save` middleware runs there, so
+  // this value lands in `login.password` exactly as it is — hashing in both places is what once stored
+  // `bcrypt(bcrypt(password))` and opened accounts nobody could log in to.
+  it('bcrypts the password once, at submit', async () => {
+    const { password, slot } = await submitRegistration('user')
 
-		const stored = await redisClient.hGetAll(slot.key)
+    const stored = await redisClient.hGetAll(slot.key)
 
-		expect(stored.password).toMatch(/^\$2[aby]\$/)
-		await expect(bcrypt.verify(password, stored.password)).resolves.toBe(true)
-	})
+    expect(stored.password).toMatch(/^\$2[aby]\$/)
+    await expect(bcrypt.verify(password, stored.password)).resolves.toBe(true)
+  })
 
-	it('mails the link the record was written with', async () => {
-		const { email, record } = await submitRegistration('user')
+  it('mails the link the record was written with', async () => {
+    const { email, record } = await submitRegistration('user')
 
-		expect(sentLinks).toEqual([{ tier: 'user', email, hash: record.hash }])
-	})
+    expect(sentLinks).toEqual([{ tier: 'user', email, hash: record.hash }])
+  })
 
-	// The live branch: the address is taken, so the person who owns it is told and nothing is written.
-	// The caller still answers `true` — the outcomes are distinguishable only in the inbox.
-	it('mails the live holder and writes no record when the address is already registered', async () => {
-		const { email } = await seedShopOwner()
-		sent.length = 0
+  // The live branch: the address is taken, so the person who owns it is told and nothing is written.
+  // The caller still answers `true` — the outcomes are distinguishable only in the inbox.
+  it('mails the live holder and writes no record when the address is already registered', async () => {
+    const { email } = await seedShopOwner()
+    sent.length = 0
 
-		await submitShopOwnerRegistration(email, REGISTRATION_PASSWORD)
+    await submitShopOwnerRegistration(email, REGISTRATION_PASSWORD)
 
-		const slot = await pendingSlot(REGISTRATION_TARGET_SHOP_OWNER, email)
-		await expect(readPendingRegistration(slot.key)).resolves.toBeNull()
-		expect(sent).toEqual([['emailAlreadyValid', email]])
-	})
+    const slot = await pendingSlot(REGISTRATION_TARGET_SHOP_OWNER, email)
+    await expect(readPendingRegistration(slot.key)).resolves.toBeNull()
+    expect(sent).toEqual([['emailAlreadyValid', email]])
+  })
 })
 
 describe('the activation link is what opens the account', () => {
-	it('opens a customer account out of the record, and drops the key', async () => {
-		const { email, password, record, slot } = await submitRegistration('user')
+  it('opens a customer account out of the record, and drops the key', async () => {
+    const { email, password, record, slot } = await submitRegistration('user')
 
-		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('user', email, record.hash)).toBe('/x/registration-done')
 
-		const [account] = await accountsByEmail('user', email)
+    const [account] = await accountsByEmail('user', email)
 
-		// The `_id` was minted at submit, three days before this click was allowed to happen.
-		expect(account._id.equals(record._id)).toBe(true)
-		expect(account.registeredAt).toEqual(record.registeredAt)
+    // The `_id` was minted at submit, three days before this click was allowed to happen.
+    expect(account._id.equals(record._id)).toBe(true)
+    expect(account.registeredAt).toEqual(record.registeredAt)
 
-		// `emailVerify` keeps `valid` and nothing else: the hash, the window and the strike counter
-		// were the pending state, and the pending state was the Redis key.
-		expect(account.emailVerify).toEqual({ valid: true })
-		expect(account).not.toHaveProperty('waitApprov')
-		expect(account).not.toHaveProperty('personalData')
+    // `emailVerify` keeps `valid` and nothing else: the hash, the window and the strike counter
+    // were the pending state, and the pending state was the Redis key.
+    expect(account.emailVerify).toEqual({ valid: true })
+    expect(account).not.toHaveProperty('waitApprov')
+    expect(account).not.toHaveProperty('personalData')
 
-		// ⚠️ Byte for byte what Redis held. Nothing on the confirm path encrypts anything — the
-		// model's `pre('insertMany')` pass is idempotent over a `Binary` subtype 6, which is the only
-		// reason a copy is safe to hand it.
-		expect(isCiphertext(account.login.email)).toBe(true)
-		expect(Buffer.from(account.login.email.buffer)).toEqual(Buffer.from(record.email.buffer))
+    // ⚠️ Byte for byte what Redis held. Nothing on the confirm path encrypts anything — the
+    // model's `pre('insertMany')` pass is idempotent over a `Binary` subtype 6, which is the only
+    // reason a copy is safe to hand it.
+    expect(isCiphertext(account.login.email)).toBe(true)
+    expect(Buffer.from(account.login.email.buffer)).toEqual(Buffer.from(record.email.buffer))
 
-		// And it is a ciphertext this collection's own key produced, not merely some ciphertext.
-		expect(account.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER))
+    // And it is a ciphertext this collection's own key produced, not merely some ciphertext.
+    expect(account.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_USER))
 
-		await expect(bcrypt.verify(password, account.login.password)).resolves.toBe(true)
-		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
-	})
+    await expect(bcrypt.verify(password, account.login.password)).resolves.toBe(true)
+    await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+  })
 
-	// ⚠️ `waitApprov` is written here or nowhere. Selling on the platform is a commercial relationship
-	// with the admin, so a stranger may ask to become a shop owner but may not become one by
-	// filling in a form — and before ADR-042 the flag lived on a document a public mutation could
-	// reach, which is how the deleted restart path revived an account with the gate already cleared.
-	it('opens a shop owner parked behind the approval queue', async () => {
-		const { email, record } = await submitRegistration('shopOwner')
+  // ⚠️ `waitApprov` is written here or nowhere. Selling on the platform is a commercial relationship
+  // with the admin, so a stranger may ask to become a shop owner but may not become one by
+  // filling in a form — and before ADR-042 the flag lived on a document a public mutation could
+  // reach, which is how the deleted restart path revived an account with the gate already cleared.
+  it('opens a shop owner parked behind the approval queue', async () => {
+    const { email, record } = await submitRegistration('shopOwner')
 
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		const [account] = await accountsByEmail('shopOwner', email)
+    const [account] = await accountsByEmail('shopOwner', email)
 
-		expect(account.waitApprov).toBe(true)
-		expect(account.emailVerify).toEqual({ valid: true })
-	})
+    expect(account.waitApprov).toBe(true)
+    expect(account.emailVerify).toEqual({ valid: true })
+  })
 
-	it('sends one welcome mail, and refuses the second click on the link it honoured', async () => {
-		const { email, record } = await submitRegistration('user')
+  it('sends one welcome mail, and refuses the second click on the link it honoured', async () => {
+    const { email, record } = await submitRegistration('user')
 
-		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
-		expect(await click('user', email, record.hash)).toBe('/x/email-check')
+    expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('user', email, record.hash)).toBe('/x/email-check')
 
-		expect(sent).toEqual([['sendWelcome', email]])
-		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
-	})
+    expect(sent).toEqual([['sendWelcome', email]])
+    await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
+  })
 
-	// ⚠️ The tier is in the Redis key because `user` and `shopOwner` are unrelated collections
-	// (ADR-002) and one person may legitimately be both, at the same address, at the same time. The
-	// two routes differ only in path and both take an address, so a customer's link answered by the
-	// seller's confirm would open a `shopOwner` account for somebody who asked to be a customer.
-	it('will not confirm a customer registration on the seller route', async () => {
-		const { email, record } = await submitRegistration('user')
+  // ⚠️ The tier is in the Redis key because `user` and `shopOwner` are unrelated collections
+  // (ADR-002) and one person may legitimately be both, at the same address, at the same time. The
+  // two routes differ only in path and both take an address, so a customer's link answered by the
+  // seller's confirm would open a `shopOwner` account for somebody who asked to be a customer.
+  it('will not confirm a customer registration on the seller route', async () => {
+    const { email, record } = await submitRegistration('user')
 
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
 
-		await expect(accountsByEmail('shopOwner', email)).resolves.toEqual([])
-		await expect(accountsByEmail('user', email)).resolves.toEqual([])
-	})
+    await expect(accountsByEmail('shopOwner', email)).resolves.toEqual([])
+    await expect(accountsByEmail('user', email)).resolves.toEqual([])
+  })
 
-	it('answers a link nobody ever submitted with the same page as a wrong one', async () => {
-		sent.length = 0
+  it('answers a link nobody ever submitted with the same page as a wrong one', async () => {
+    sent.length = 0
 
-		expect(await click('user', itestEmail(), 'x'.repeat(50))).toBe('/x/email-check')
+    expect(await click('user', itestEmail(), 'x'.repeat(50))).toBe('/x/email-check')
 
-		expect(sent).toEqual([])
-	})
+    expect(sent).toEqual([])
+  })
 })
 
 describe('a closed account is handed back to whoever proves they can read mail at its address', () => {
-	// The first half of the platform owner's rule, and the reason submit writes nothing: for the whole
-	// three days the registration is pending, the closed document is exactly as its owner left it.
-	it('is untouched while the new registration is only pending', async () => {
-		const { _id, email } = await seedShopOwner()
-		await closeShopOwner(_id)
+  // The first half of the platform owner's rule, and the reason submit writes nothing: for the whole
+  // three days the registration is pending, the closed document is exactly as its owner left it.
+  it('is untouched while the new registration is only pending', async () => {
+    const { _id, email } = await seedShopOwner()
+    await closeShopOwner(_id)
 
-		await submitRegistration('shopOwner', email)
+    await submitRegistration('shopOwner', email)
 
-		const closed = await shopOwnerById(_id)
-		expect(closed?.login.email).toBe(email)
-		expect(closed?.deleted).toBeInstanceOf(Date)
-	})
+    const closed = await shopOwnerById(_id)
+    expect(closed?.login.email).toBe(email)
+    expect(closed?.deleted).toBeInstanceOf(Date)
+  })
 
-	// ⚠️ **The claim no mock can make** — ADR-046, the platform owner's ruling of 2026-08-29: *"the 30
-	// days windows is for undo too"*, and *"inside 1–30 days, signing up again at the same address
-	// restores the old account"*. `login.email_unique` carries no `partialFilterExpression` (ADR-011),
-	// so the address never moved off the closed document and the same lookup that refuses a duplicate
-	// finds the account to hand back. The unit suite proves the update is built right; this proves the
-	// collection accepts it — the update goes through Mongoose with `runValidators: true`, so the plugin
-	// encrypts the `$set` on the way past and the `$jsonSchema` gets a vote on what is left behind.
-	it('comes back at the click, with its id and everything hanging off it', async () => {
-		const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
-		await closeShopOwner(closedId)
-		const before = await shopOwnerById(closedId)
+  // ⚠️ **The claim no mock can make** — ADR-046, the platform owner's ruling of 2026-08-29: *"the 30
+  // days windows is for undo too"*, and *"inside 1–30 days, signing up again at the same address
+  // restores the old account"*. `login.email_unique` carries no `partialFilterExpression` (ADR-011),
+  // so the address never moved off the closed document and the same lookup that refuses a duplicate
+  // finds the account to hand back. The unit suite proves the update is built right; this proves the
+  // collection accepts it — the update goes through Mongoose with `runValidators: true`, so the plugin
+  // encrypts the `$set` on the way past and the `$jsonSchema` gets a vote on what is left behind.
+  it('comes back at the click, with its id and everything hanging off it', async () => {
+    const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
+    await closeShopOwner(closedId)
+    const before = await shopOwnerById(closedId)
 
-		const { record } = await submitRegistration('shopOwner', email)
+    const { record } = await submitRegistration('shopOwner', email)
 
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		// One holder of the address, and it is the account that was already there — not the `_id` the
-		// submit minted, which is the whole difference between an undo and a second account.
-		const holders = await accountsByEmail('shopOwner', email)
-		expect(holders).toHaveLength(1)
-		expect(holders[0]._id.equals(closedId)).toBe(true)
-		await expect(shopOwnerById(record._id)).resolves.toBeNull()
+    // One holder of the address, and it is the account that was already there — not the `_id` the
+    // submit minted, which is the whole difference between an undo and a second account.
+    const holders = await accountsByEmail('shopOwner', email)
+    expect(holders).toHaveLength(1)
+    expect(holders[0]._id.equals(closedId)).toBe(true)
+    await expect(shopOwnerById(record._id)).resolves.toBeNull()
 
-		const back = await shopOwnerById(closedId)
-		expect(back).not.toHaveProperty('deleted')
-		expect(back).not.toHaveProperty('deletedBy')
-		expect(back?.emailVerify.valid).toBe(true)
-		expect(back?.registeredAt).toEqual(before?.registeredAt)
-		expect(back?.personalData.firstName).toBe('Itest')
-		expect(back?.personalData.contacts.email).toBe(email)
+    const back = await shopOwnerById(closedId)
+    expect(back).not.toHaveProperty('deleted')
+    expect(back).not.toHaveProperty('deletedBy')
+    expect(back?.emailVerify.valid).toBe(true)
+    expect(back?.registeredAt).toEqual(before?.registeredAt)
+    expect(back?.personalData.firstName).toBe('Itest')
+    expect(back?.personalData.contacts.email).toBe(email)
 
-		// The credential is the one just chosen, and the one the account carried before the closure is
-		// gone: nothing may outlive a closure that could be used to log in as the account before it.
-		expect(back?.login.password).not.toBe(before?.login.password)
-		await expect(bcrypt.verify(REGISTRATION_PASSWORD, back?.login.password as string)).resolves.toBe(true)
-	})
+    // The credential is the one just chosen, and the one the account carried before the closure is
+    // gone: nothing may outlive a closure that could be used to log in as the account before it.
+    expect(back?.login.password).not.toBe(before?.login.password)
+    await expect(bcrypt.verify(REGISTRATION_PASSWORD, back?.login.password as string)).resolves.toBe(true)
+  })
 
-	// ⚠️ The platform owner's ruling in the same breath: *"the state of waitApprove is true, so admin can
-	// not approve the user if it is a problem"*. Coming back is re-entry through the door a first
-	// registration uses, so the admin gets the same veto over a returning seller as over a new one —
-	// and it is the only human checkpoint on somebody registering at a recycled mailbox.
-	it('goes back in front of the admin rather than straight into a shop', async () => {
-		const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
-		await closeShopOwner(closedId)
+  // ⚠️ The platform owner's ruling in the same breath: *"the state of waitApprove is true, so admin can
+  // not approve the user if it is a problem"*. Coming back is re-entry through the door a first
+  // registration uses, so the admin gets the same veto over a returning seller as over a new one —
+  // and it is the only human checkpoint on somebody registering at a recycled mailbox.
+  it('goes back in front of the admin rather than straight into a shop', async () => {
+    const { _id: closedId, email } = await seedShopOwner({}, { waitApprov: false })
+    await closeShopOwner(closedId)
 
-		const { record } = await submitRegistration('shopOwner', email)
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+    const { record } = await submitRegistration('shopOwner', email)
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		expect((await shopOwnerById(closedId))?.waitApprov).toBe(true)
-		expect(sent).toEqual([['sendWelcome', email]])
-	})
+    expect((await shopOwnerById(closedId))?.waitApprov).toBe(true)
+    expect(sent).toEqual([['sendWelcome', email]])
+  })
 
-	// ⚠️ **An undo the subject performs on themselves is not a way out of a suspension.** Only the Admin
-	// tier lifts one (ADR-044), so a suspended-then-closed account comes back suspended and is refused at
-	// the login gate exactly as it was before. The `disabledReason` is what makes this document writable
-	// at all — the validator carries `dependencies: { disabled: ['disabledReason'] }`, so an update that
-	// touched the suspension would have to supply one, and this one deliberately does not touch it.
-	it('comes back suspended when that is how it was closed', async () => {
-		const { _id: closedId, email } = await seedShopOwner(
-			{},
-			{ disabled: true, disabledReason: 'itest suspension', waitApprov: true }
-		)
-		await closeShopOwner(closedId)
+  // ⚠️ **An undo the subject performs on themselves is not a way out of a suspension.** Only the Admin
+  // tier lifts one (ADR-044), so a suspended-then-closed account comes back suspended and is refused at
+  // the login gate exactly as it was before. The `disabledReason` is what makes this document writable
+  // at all — the validator carries `dependencies: { disabled: ['disabledReason'] }`, so an update that
+  // touched the suspension would have to supply one, and this one deliberately does not touch it.
+  it('comes back suspended when that is how it was closed', async () => {
+    const { _id: closedId, email } = await seedShopOwner(
+      {},
+      { disabled: true, disabledReason: 'itest suspension', waitApprov: true }
+    )
+    await closeShopOwner(closedId)
 
-		const { record } = await submitRegistration('shopOwner', email)
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
+    const { record } = await submitRegistration('shopOwner', email)
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/registration-done')
 
-		const back = await shopOwnerById(closedId)
-		expect(back?.disabled).toBe(true)
-		expect(back?.disabledReason).toBe('itest suspension')
-		expect(back).not.toHaveProperty('deleted')
-	})
+    const back = await shopOwnerById(closedId)
+    expect(back?.disabled).toBe(true)
+    expect(back?.disabledReason).toBe('itest suspension')
+    expect(back).not.toHaveProperty('deleted')
+  })
 
-	// ⚠️ **The address is the only thing either collection indexes uniquely, so a live holder is a real
-	// answer and not an error to route around.** Submit already refused the live case, so no browser can
-	// get here — this is the two-people-one-address race, where both submitted before either clicked and
-	// the first click opened the account. The loser is refused at the same check-your-mail page every
-	// other refusal on this route answers with: which of the two they are is only ever visible to
-	// somebody who can read the mailbox, and the record survives so nothing is silently spent.
-	it('refuses rather than touching a live account holding the address', async () => {
-		const { email, record, slot } = await submitRegistration('shopOwner')
-		const { _id: liveId } = await seedShopOwner({ email })
-		const before = await shopOwnerById(liveId)
+  // ⚠️ **The address is the only thing either collection indexes uniquely, so a live holder is a real
+  // answer and not an error to route around.** Submit already refused the live case, so no browser can
+  // get here — this is the two-people-one-address race, where both submitted before either clicked and
+  // the first click opened the account. The loser is refused at the same check-your-mail page every
+  // other refusal on this route answers with: which of the two they are is only ever visible to
+  // somebody who can read the mailbox, and the record survives so nothing is silently spent.
+  it('refuses rather than touching a live account holding the address', async () => {
+    const { email, record, slot } = await submitRegistration('shopOwner')
+    const { _id: liveId } = await seedShopOwner({ email })
+    const before = await shopOwnerById(liveId)
 
-		expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
+    expect(await click('shopOwner', email, record.hash)).toBe('/x/email-check')
 
-		const holders = await accountsByEmail('shopOwner', email)
-		expect(holders).toHaveLength(1)
-		expect(holders[0]._id.equals(liveId)).toBe(true)
-		expect((await shopOwnerById(liveId))?.login.password).toBe(before?.login.password)
+    const holders = await accountsByEmail('shopOwner', email)
+    expect(holders).toHaveLength(1)
+    expect(holders[0]._id.equals(liveId)).toBe(true)
+    expect((await shopOwnerById(liveId))?.login.password).toBe(before?.login.password)
 
-		await expect(redisClient.exists(slot.key)).resolves.toBe(1)
-	})
+    await expect(redisClient.exists(slot.key)).resolves.toBe(1)
+  })
 })
 
 describe('a replayed confirmation', () => {
-	// ⚠️ The failure ADR-042 names by hand: the confirm spans Redis and MongoDB and can only be
-	// idempotent, not atomic, so a crash between the commit and the `DEL` leaves a live key over a
-	// live account. The pre-minted `_id` is what makes the replay knowable — the insert fails on the
-	// duplicate, and a document carrying *this record's* `_id` can only have been written by an
-	// earlier run of this same confirmation. Re-writing the record here is that crash, exactly.
-	it('opens one account, mails one welcome, and still clears the key', async () => {
-		const { email, record, slot } = await submitRegistration('user')
+  // ⚠️ The failure ADR-042 names by hand: the confirm spans Redis and MongoDB and can only be
+  // idempotent, not atomic, so a crash between the commit and the `DEL` leaves a live key over a
+  // live account. The pre-minted `_id` is what makes the replay knowable — the insert fails on the
+  // duplicate, and a document carrying *this record's* `_id` can only have been written by an
+  // earlier run of this same confirmation. Re-writing the record here is that crash, exactly.
+  it('opens one account, mails one welcome, and still clears the key', async () => {
+    const { email, record, slot } = await submitRegistration('user')
 
-		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('user', email, record.hash)).toBe('/x/registration-done')
 
-		await writePendingRegistration(slot, record)
+    await writePendingRegistration(slot, record)
 
-		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('user', email, record.hash)).toBe('/x/registration-done')
 
-		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
-		expect(sent).toEqual([['sendWelcome', email]])
-		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
-	})
+    await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
+    expect(sent).toEqual([['sendWelcome', email]])
+    await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+  })
 })
 
 describe('the strike counter belongs to the record, and does not buy time', () => {
-	// ⚠️ **A wrong hash spends a strike; it does not extend the window.** `strikePendingRegistration`
-	// is the one write on this path that must not go through the module's `writeRecord`, because that
-	// one re-arms the TTL — and a strike that re-armed it would let anybody keep somebody else's
-	// pending registration alive indefinitely by guessing at their link. The TTL is shortened first so
-	// a re-arm would be visible: on a fresh key both readings are three days and nothing is provable.
-	it('counts a wrong hash without re-arming the three-day window', async () => {
-		const { email, slot } = await submitRegistration('user')
-		await redisClient.expire(slot.key, 120)
+  // ⚠️ **A wrong hash spends a strike; it does not extend the window.** `strikePendingRegistration`
+  // is the one write on this path that must not go through the module's `writeRecord`, because that
+  // one re-arms the TTL — and a strike that re-armed it would let anybody keep somebody else's
+  // pending registration alive indefinitely by guessing at their link. The TTL is shortened first so
+  // a re-arm would be visible: on a fresh key both readings are three days and nothing is provable.
+  it('counts a wrong hash without re-arming the three-day window', async () => {
+    const { email, slot } = await submitRegistration('user')
+    await redisClient.expire(slot.key, 120)
 
-		expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
+    expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
 
-		await expect(redisClient.hGet(slot.key, 'requestTimes')).resolves.toBe('2')
-		expect(await redisClient.ttl(slot.key)).toBeLessThanOrEqual(120)
-		expect(sent).toEqual([['wrongHash', email, 2]])
-		await expect(accountsByEmail('user', email)).resolves.toEqual([])
-	})
+    await expect(redisClient.hGet(slot.key, 'requestTimes')).resolves.toBe('2')
+    expect(await redisClient.ttl(slot.key)).toBeLessThanOrEqual(120)
+    expect(sent).toEqual([['wrongHash', email, 2]])
+    await expect(accountsByEmail('user', email)).resolves.toEqual([])
+  })
 
-	// The hash is checked before the ceiling, so a *wrong* guess at five spent strikes is what destroys
-	// what is left of the registration — the link is being guessed at rather than clicked.
-	it('destroys a record whose five attempts are spent, on a further wrong guess', async () => {
-		const { email, slot } = await submitRegistration('user')
-		await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
+  // The hash is checked before the ceiling, so a *wrong* guess at five spent strikes is what destroys
+  // what is left of the registration — the link is being guessed at rather than clicked.
+  it('destroys a record whose five attempts are spent, on a further wrong guess', async () => {
+    const { email, slot } = await submitRegistration('user')
+    await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
 
-		expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
+    expect(await click('user', email, 'w'.repeat(50))).toBe('/x/email-check')
 
-		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
-		await expect(accountsByEmail('user', email)).resolves.toEqual([])
-		expect(sent).toEqual([['tooMuchVerifyRequests', email]])
-	})
+    await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+    await expect(accountsByEmail('user', email)).resolves.toEqual([])
+    expect(sent).toEqual([['tooMuchVerifyRequests', email]])
+  })
 
-	// ⚠️ **B6, closed.** Before the fix the ceiling was checked ahead of the hash, so anybody who knew
-	// only the address could fire wrong-hash clicks to drive `requestTimes` to the ceiling and dispose
-	// of the owner's still-valid registration the moment they clicked their own, correct link — no
-	// guess at the real hash required. The hash is checked first now: it opens the account no matter
-	// how many strikes a stranger spent on the record first.
-	it('opens the account on a correct hash even after five attempts are spent', async () => {
-		const { email, record, slot } = await submitRegistration('user')
-		await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
+  // ⚠️ **B6, closed.** Before the fix the ceiling was checked ahead of the hash, so anybody who knew
+  // only the address could fire wrong-hash clicks to drive `requestTimes` to the ceiling and dispose
+  // of the owner's still-valid registration the moment they clicked their own, correct link — no
+  // guess at the real hash required. The hash is checked first now: it opens the account no matter
+  // how many strikes a stranger spent on the record first.
+  it('opens the account on a correct hash even after five attempts are spent', async () => {
+    const { email, record, slot } = await submitRegistration('user')
+    await redisClient.hSet(slot.key, { requestTimes: `${MAX_VERIFY_ATTEMPTS}` })
 
-		expect(await click('user', email, record.hash)).toBe('/x/registration-done')
+    expect(await click('user', email, record.hash)).toBe('/x/registration-done')
 
-		await expect(redisClient.exists(slot.key)).resolves.toBe(0)
-		await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
-		expect(sent).toEqual([['sendWelcome', email]])
-	})
+    await expect(redisClient.exists(slot.key)).resolves.toBe(0)
+    await expect(accountsByEmail('user', email)).resolves.toHaveLength(1)
+    expect(sent).toEqual([['sendWelcome', email]])
+  })
 })
 
 /**
@@ -917,53 +917,53 @@ describe('the strike counter belongs to the record, and does not buy time', () =
  * the personal data. Nothing but a same-value/different-ciphertext check notices.
  */
 describe('personal fields at rest', () => {
-	it('stores login.email deterministically and every other personal field randomly', async () => {
-		const { _id, email } = await seedShopOwner()
-		const other = await seedShopOwner()
+  it('stores login.email deterministically and every other personal field randomly', async () => {
+    const { _id, email } = await seedShopOwner()
+    const other = await seedShopOwner()
 
-		const stored = await shopOwnerByIdEncrypted(_id)
-		const storedOther = await shopOwnerByIdEncrypted(other._id)
+    const stored = await shopOwnerByIdEncrypted(_id)
+    const storedOther = await shopOwnerByIdEncrypted(other._id)
 
-		// Nothing readable survives the write.
-		expect(isCiphertext(stored?.login.email)).toBe(true)
-		expect(isCiphertext(stored?.personalData.contacts.mobile)).toBe(true)
-		expect(isCiphertext(stored?.personalData.address.street)).toBe(true)
-		expect(isCiphertext(stored?.personalData.birth.date)).toBe(true)
+    // Nothing readable survives the write.
+    expect(isCiphertext(stored?.login.email)).toBe(true)
+    expect(isCiphertext(stored?.personalData.contacts.mobile)).toBe(true)
+    expect(isCiphertext(stored?.personalData.address.street)).toBe(true)
+    expect(isCiphertext(stored?.personalData.birth.date)).toBe(true)
 
-		// Deterministic: re-encrypting the plaintext address reproduces the stored bytes exactly,
-		// which is what makes `{ 'login.email': <ciphertext> }` a working filter for both flows.
-		expect(stored?.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_SHOP_OWNER))
+    // Deterministic: re-encrypting the plaintext address reproduces the stored bytes exactly,
+    // which is what makes `{ 'login.email': <ciphertext> }` a working filter for both flows.
+    expect(stored?.login.email).toEqual(await encryptValue(email, ALGORITHM_DETERMINISTIC, KEY_ALT_NAME_SHOP_OWNER))
 
-		// Random: two shopOwners seeded with the identical street are stored as different bytes.
-		expect(stored?.personalData.address.street).not.toEqual(storedOther?.personalData.address.street)
+    // Random: two shopOwners seeded with the identical street are stored as different bytes.
+    expect(stored?.personalData.address.street).not.toEqual(storedOther?.personalData.address.street)
 
-		// NOT encrypted, deliberately: the password is already a hash and the city is a sort key on
-		// the shop-owner table in the admin frontend, which a ciphertext would order by its bytes.
-		expect(isCiphertext(stored?.login.password)).toBe(false)
-		expect(stored?.personalData.address.city).toBe('Springfield')
-	})
+    // NOT encrypted, deliberately: the password is already a hash and the city is a sort key on
+    // the shop-owner table in the admin frontend, which a ciphertext would order by its bytes.
+    expect(isCiphertext(stored?.login.password)).toBe(false)
+    expect(stored?.personalData.address.city).toBe('Springfield')
+  })
 })
 
 describe('non-GraphQL routes', () => {
-	it('serves /health', async () => {
-		const res = await fetch(`${base}/health`)
+  it('serves /health', async () => {
+    const res = await fetch(`${base}/health`)
 
-		expect(res.status).toBe(200)
-		const json = (await res.json()) as { status: string; timestamp: string }
-		expect(json.status).toBe('OK')
-		expect(json.timestamp).toBe(new Date(json.timestamp).toISOString())
-	})
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { status: string; timestamp: string }
+    expect(json.status).toBe('OK')
+    expect(json.timestamp).toBe(new Date(json.timestamp).toISOString())
+  })
 
-	it('mounts the /check router', async () => {
-		const res = await fetch(`${base}/check/`)
+  it('mounts the /check router', async () => {
+    const res = await fetch(`${base}/check/`)
 
-		expect(res.status).toBe(200)
-		expect(await res.text()).toBe('')
-	})
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('')
+  })
 
-	it('falls through to 404 for an unknown path', async () => {
-		const res = await fetch(`${base}/nope`)
+  it('falls through to 404 for an unknown path', async () => {
+    const res = await fetch(`${base}/nope`)
 
-		expect(res.status).toBe(404)
-	})
+    expect(res.status).toBe(404)
+  })
 })

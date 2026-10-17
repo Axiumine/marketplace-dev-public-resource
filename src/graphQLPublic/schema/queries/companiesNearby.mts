@@ -10,25 +10,25 @@ import { GraphQLInt, GraphQLNonNull } from 'graphql'
 import { trusted, Types } from 'mongoose'
 
 interface IArgs {
-	bbox?: IBoundingBox | null
-	near?: INearPoint | null
-	limit?: number | null
+  bbox?: IBoundingBox | null
+  near?: INearPoint | null
+  limit?: number | null
 }
 
 interface IPin {
-	_id: Types.ObjectId
-	publicName: string
-	slug: string
-	position: { type: string; coordinates: number[] }
-	distanceMeters?: number
+  _id: Types.ObjectId
+  publicName: string
+  slug: string
+  position: { type: string; coordinates: number[] }
+  distanceMeters?: number
 }
 
 /** Shape the bbox path fetches — `position` is still nested under `address` there. */
 interface IBboxCompany {
-	_id: Types.ObjectId
-	publicName: string
-	slug: string
-	address: { position: { type: string; coordinates: number[] } }
+  _id: Types.ObjectId
+  publicName: string
+  slug: string
+  address: { position: { type: string; coordinates: number[] } }
 }
 
 /**
@@ -62,74 +62,74 @@ interface IBboxCompany {
  * through `sanitizeFilter`, so the `$geoNear` path spells the same predicates plainly.
  */
 export const companiesNearby = {
-	type: new GraphQLNonNull(GraphQLPublicCompanyNearbyResult),
-	description: 'Get published companies inside a bounding box, or within a radius of a point',
-	args: {
-		bbox: { type: GraphQLInputBoundingBox },
-		near: { type: GraphQLInputNearPoint },
-		limit: { type: GraphQLInt }
-	},
-	async resolve(_: unknown, args: IArgs) {
-		if (!args.bbox === !args.near) {
-			throw new Error('Pass exactly one of bbox or near')
-		}
+  type: new GraphQLNonNull(GraphQLPublicCompanyNearbyResult),
+  description: 'Get published companies inside a bounding box, or within a radius of a point',
+  args: {
+    bbox: { type: GraphQLInputBoundingBox },
+    near: { type: GraphQLInputNearPoint },
+    limit: { type: GraphQLInt }
+  },
+  async resolve(_: unknown, args: IArgs) {
+    if (!args.bbox === !args.near) {
+      throw new Error('Pass exactly one of bbox or near')
+    }
 
-		// Its own clamp rather than clampLimit(): a page of shop cards and a screenful of map markers
-		// are bounded by different things — one by what a reader scrolls, the other by what a browser
-		// can draw and what a viewport payload may weigh.
-		const requested = args.limit ?? MAX_NEARBY
-		// `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
-		// `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
-		const limit = Math.min(Math.max(requested, 1), MAX_NEARBY)
+    // Its own clamp rather than clampLimit(): a page of shop cards and a screenful of map markers
+    // are bounded by different things — one by what a reader scrolls, the other by what a browser
+    // can draw and what a viewport payload may weigh.
+    const requested = args.limit ?? MAX_NEARBY
+    // `min(max(…))` rather than a boundary comparison — see clampLimit(): `requested < 1` and
+    // `requested <= 1` return the same 1, so the comparison form carries an unkillable mutant.
+    const limit = Math.min(Math.max(requested, 1), MAX_NEARBY)
 
-		// limit + 1, so `truncated` is exact for the cost of one extra pin. A bare `=== limit` cannot
-		// tell a full page from a region that happens to hold exactly that many shops.
-		const pins = args.near ? await pinsNear(args.near, limit + 1) : await pinsInBox(args.bbox!, limit + 1)
+    // limit + 1, so `truncated` is exact for the cost of one extra pin. A bare `=== limit` cannot
+    // tell a full page from a region that happens to hold exactly that many shops.
+    const pins = args.near ? await pinsNear(args.near, limit + 1) : await pinsInBox(args.bbox!, limit + 1)
 
-		const truncated = pins.length > limit
-		if (truncated) pins.pop()
+    const truncated = pins.length > limit
+    if (truncated) pins.pop()
 
-		return { nodes: pins, truncated }
-	}
+    return { nodes: pins, truncated }
+  }
 }
 
 async function pinsNear(near: INearPoint, limit: number): Promise<IPin[]> {
-	assertNearPoint(near)
+  assertNearPoint(near)
 
-	return await Company.aggregate<IPin>([
-		{
-			$geoNear: {
-				near: { type: 'Point', coordinates: [near.lng, near.lat] },
-				distanceField: 'distanceMeters',
-				maxDistance: near.radiusMeters,
-				// spherical: true is what makes maxDistance and distanceField metres. Without it they
-				// are radians against a planar index, and the query answers with the wrong shops
-				// rather than with an error.
-				spherical: true,
-				key: 'address.position',
-				query: LIVE_PUBLIC_PIPELINE
-			}
-		},
-		{ $limit: limit },
-		{ $project: { _id: 1, publicName: 1, slug: 1, position: '$address.position', distanceMeters: 1 } }
-	])
+  return await Company.aggregate<IPin>([
+    {
+      $geoNear: {
+        near: { type: 'Point', coordinates: [near.lng, near.lat] },
+        distanceField: 'distanceMeters',
+        maxDistance: near.radiusMeters,
+        // spherical: true is what makes maxDistance and distanceField metres. Without it they
+        // are radians against a planar index, and the query answers with the wrong shops
+        // rather than with an error.
+        spherical: true,
+        key: 'address.position',
+        query: LIVE_PUBLIC_PIPELINE
+      }
+    },
+    { $limit: limit },
+    { $project: { _id: 1, publicName: 1, slug: 1, position: '$address.position', distanceMeters: 1 } }
+  ])
 }
 
 async function pinsInBox(bbox: IBoundingBox, limit: number): Promise<IPin[]> {
-	const docs = await Company.find(
-		{ ...livePublic(), 'address.position': trusted(bboxToPolygon(bbox)) },
-		'_id publicName slug address.position'
-	)
-		.limit(limit)
-		.lean<IBboxCompany[]>()
+  const docs = await Company.find(
+    { ...livePublic(), 'address.position': trusted(bboxToPolygon(bbox)) },
+    '_id publicName slug address.position'
+  )
+    .limit(limit)
+    .lean<IBboxCompany[]>()
 
-	// Flattened here rather than by a `$project`, because `find()` has no stage to do it in. The
-	// alternative — exposing `address` on the pin type — would ship four postal-address strings per
-	// marker that nothing draws.
-	return docs.map((doc) => ({
-		_id: doc._id,
-		publicName: doc.publicName,
-		slug: doc.slug,
-		position: doc.address.position
-	}))
+  // Flattened here rather than by a `$project`, because `find()` has no stage to do it in. The
+  // alternative — exposing `address` on the pin type — would ship four postal-address strings per
+  // marker that nothing draws.
+  return docs.map((doc) => ({
+    _id: doc._id,
+    publicName: doc.publicName,
+    slug: doc.slug,
+    position: doc.address.position
+  }))
 }

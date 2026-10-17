@@ -26,11 +26,11 @@ import { GraphQLBoolean, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectT
  * what the frontend's codegen would put in its types. Two hand-written files, two readable names.
  */
 export const GraphQLPublicItemPage = new GraphQLObjectType({
-	name: 'GraphQLPublicItemPage',
-	fields: () => ({
-		nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicItemHit))) },
-		total: { type: new GraphQLNonNull(GraphQLInt) },
-		totalIsExact: { type: new GraphQLNonNull(GraphQLBoolean) },
-		hasMore: { type: new GraphQLNonNull(GraphQLBoolean) }
-	})
+  name: 'GraphQLPublicItemPage',
+  fields: () => ({
+    nodes: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicItemHit))) },
+    total: { type: new GraphQLNonNull(GraphQLInt) },
+    totalIsExact: { type: new GraphQLNonNull(GraphQLBoolean) },
+    hasMore: { type: new GraphQLNonNull(GraphQLBoolean) }
+  })
 })

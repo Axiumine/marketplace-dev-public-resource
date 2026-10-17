@@ -1,10 +1,10 @@
 import type { TAccessModel } from '@axiumine/koa-utils/lib/access/accessPaths'
 import { encryptDocument } from '@axiumine/marketplace-common/encryption/encryptDocument'
 import {
-	ENCRYPTED_FIELDS_SHOP_OWNER,
-	ENCRYPTED_FIELDS_USER,
-	KEY_ALT_NAME_SHOP_OWNER,
-	KEY_ALT_NAME_USER
+  ENCRYPTED_FIELDS_SHOP_OWNER,
+  ENCRYPTED_FIELDS_USER,
+  KEY_ALT_NAME_SHOP_OWNER,
+  KEY_ALT_NAME_USER
 } from '@axiumine/marketplace-common/encryption/encryptedFields'
 import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner'
 import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
@@ -46,65 +46,65 @@ export const EMAIL_PATH = 'login.email'
  * prevent. It fails at the first registration instead.
  */
 async function encryptLoginEmail(
-	uEmail: string,
-	fields: Parameters<typeof encryptDocument>[1],
-	keyAltName: string
+  uEmail: string,
+  fields: Parameters<typeof encryptDocument>[1],
+  keyAltName: string
 ): Promise<Binary> {
-	const encrypted = await encryptDocument<{ login: { email: string | Binary } }>(
-		{ login: { email: uEmail } },
-		fields,
-		keyAltName
-	)
+  const encrypted = await encryptDocument<{ login: { email: string | Binary } }>(
+    { login: { email: uEmail } },
+    fields,
+    keyAltName
+  )
 
-	if (!(encrypted.login.email instanceof Binary)) {
-		throw new Error(`encryptLoginEmail: ${EMAIL_PATH} came back in the clear — it is no longer an encrypted field`)
-	}
+  if (!(encrypted.login.email instanceof Binary)) {
+    throw new Error(`encryptLoginEmail: ${EMAIL_PATH} came back in the clear — it is no longer an encrypted field`)
+  }
 
-	return encrypted.login.email
+  return encrypted.login.email
 }
 
 /** Everything one tier's registration differs by. Two values of it exist and no third is expected. */
 export interface IRegistrationTarget {
-	/**
-	 * Which collection this is, as data.
-	 *
-	 * ⚠️ Typed `ScrubbableTier` rather than `Tier` on purpose: it is handed to `buildAccountScrub` on the
-	 * confirm path, and `admin` has no closure story at all. A fourth tier that cannot be scrubbed cannot
-	 * be registered through here either, and the compiler says so.
-	 */
-	tier: ScrubbableTier
-	/** `Model<any>` — koa-utils' own type for a model an access flow is pointed at. */
-	model: TAccessModel
-	/**
-	 * Whether a confirmed account starts parked behind the admin's approval queue.
-	 *
-	 * ⚠️ **`true` on `shopOwner`, and it is written at confirm rather than at submit** — which is the point
-	 * of moving it here. Selling on the platform is a commercial relationship with the admin, so a
-	 * stranger may ask to become a shop owner but may not become one by filling in a form; before ADR-042
-	 * the flag lived on a document a public mutation could reach, and the shop owner's restart path
-	 * left it cleared on a revived account. The only writer is now the one place that creates the document.
-	 */
-	waitApprov: boolean
-	/** Deterministic ciphertext of an address, under this collection's data key. */
-	encryptEmail(uEmail: string): Promise<Binary>
-	/** The activation link, on this tier's own domain and route. */
-	sendVerifyEmail(email: string, hash: string): Promise<void>
+  /**
+   * Which collection this is, as data.
+   *
+   * ⚠️ Typed `ScrubbableTier` rather than `Tier` on purpose: it is handed to `buildAccountScrub` on the
+   * confirm path, and `admin` has no closure story at all. A fourth tier that cannot be scrubbed cannot
+   * be registered through here either, and the compiler says so.
+   */
+  tier: ScrubbableTier
+  /** `Model<any>` — koa-utils' own type for a model an access flow is pointed at. */
+  model: TAccessModel
+  /**
+   * Whether a confirmed account starts parked behind the admin's approval queue.
+   *
+   * ⚠️ **`true` on `shopOwner`, and it is written at confirm rather than at submit** — which is the point
+   * of moving it here. Selling on the platform is a commercial relationship with the admin, so a
+   * stranger may ask to become a shop owner but may not become one by filling in a form; before ADR-042
+   * the flag lived on a document a public mutation could reach, and the shop owner's restart path
+   * left it cleared on a revived account. The only writer is now the one place that creates the document.
+   */
+  waitApprov: boolean
+  /** Deterministic ciphertext of an address, under this collection's data key. */
+  encryptEmail(uEmail: string): Promise<Binary>
+  /** The activation link, on this tier's own domain and route. */
+  sendVerifyEmail(email: string, hash: string): Promise<void>
 }
 
 /** `user` — the end customer. */
 export const REGISTRATION_TARGET_USER: IRegistrationTarget = {
-	tier: TIER.user,
-	model: User,
-	waitApprov: false,
-	encryptEmail: async (uEmail) => await encryptLoginEmail(uEmail, ENCRYPTED_FIELDS_USER, KEY_ALT_NAME_USER),
-	sendVerifyEmail: sendUserVerifyEmail
+  tier: TIER.user,
+  model: User,
+  waitApprov: false,
+  encryptEmail: async (uEmail) => await encryptLoginEmail(uEmail, ENCRYPTED_FIELDS_USER, KEY_ALT_NAME_USER),
+  sendVerifyEmail: sendUserVerifyEmail
 }
 
 /** `shopOwner` — the person who runs shops on the platform. */
 export const REGISTRATION_TARGET_SHOP_OWNER: IRegistrationTarget = {
-	tier: TIER.shopOwner,
-	model: ShopOwner,
-	waitApprov: true,
-	encryptEmail: async (uEmail) => await encryptLoginEmail(uEmail, ENCRYPTED_FIELDS_SHOP_OWNER, KEY_ALT_NAME_SHOP_OWNER),
-	sendVerifyEmail: sendShopOwnerVerifyEmail
+  tier: TIER.shopOwner,
+  model: ShopOwner,
+  waitApprov: true,
+  encryptEmail: async (uEmail) => await encryptLoginEmail(uEmail, ENCRYPTED_FIELDS_SHOP_OWNER, KEY_ALT_NAME_SHOP_OWNER),
+  sendVerifyEmail: sendShopOwnerVerifyEmail
 }

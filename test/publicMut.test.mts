@@ -10,22 +10,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // MutationsPublic - all authored locally - is exercised for real. The field shapes below mirror
 // koa-utils'; what actually binds them to `shopOwner` is pinned in resetPwdFlow.test.mts.
 vi.mock('../src/lib/access/resetPwdFlow.mts', () => ({
-	resetPwd: {
-		description: 'send reset password link',
-		type: new GraphQLNonNull(GraphQLBoolean),
-		args: { email: { type: new GraphQLNonNull(GraphQLString) } },
-		resolve: vi.fn()
-	},
-	updatePwd: {
-		description: "changes the user's password",
-		type: new GraphQLNonNull(GraphQLBoolean),
-		args: {
-			email: { type: new GraphQLNonNull(GraphQLString) },
-			hash: { type: new GraphQLNonNull(GraphQLString) },
-			password: { type: new GraphQLNonNull(GraphQLString) }
-		},
-		resolve: vi.fn()
-	}
+  resetPwd: {
+    description: 'send reset password link',
+    type: new GraphQLNonNull(GraphQLBoolean),
+    args: { email: { type: new GraphQLNonNull(GraphQLString) } },
+    resolve: vi.fn()
+  },
+  updatePwd: {
+    description: "changes the user's password",
+    type: new GraphQLNonNull(GraphQLBoolean),
+    args: {
+      email: { type: new GraphQLNonNull(GraphQLString) },
+      hash: { type: new GraphQLNonNull(GraphQLString) },
+      password: { type: new GraphQLNonNull(GraphQLString) }
+    },
+    resolve: vi.fn()
+  }
 }))
 
 // Imported dynamically inside beforeEach, not at module top level and not in beforeAll. A
@@ -44,95 +44,95 @@ let QueriesPublic: (typeof import('../src/graphQLPublic/schema/queries.mts'))['d
 let MutationsPublic: (typeof import('../src/graphQLPublic/schema/mutations.mts'))['default']
 
 beforeEach(async () => {
-	;({ publicMutArgs } = await import('../src/graphQLPublic/schema/mutations/publicMutArgs.mts'))
-	;({ publicMutNoArgs } = await import('../src/graphQLPublic/schema/mutations/publicMutNoArgs.mts'))
-	;({ default: QueriesPublic } = await import('../src/graphQLPublic/schema/queries.mts'))
-	;({ default: MutationsPublic } = await import('../src/graphQLPublic/schema/mutations.mts'))
+  ;({ publicMutArgs } = await import('../src/graphQLPublic/schema/mutations/publicMutArgs.mts'))
+  ;({ publicMutNoArgs } = await import('../src/graphQLPublic/schema/mutations/publicMutNoArgs.mts'))
+  ;({ default: QueriesPublic } = await import('../src/graphQLPublic/schema/queries.mts'))
+  ;({ default: MutationsPublic } = await import('../src/graphQLPublic/schema/mutations.mts'))
 })
 
 describe('mutations.publicMutNoArgs', () => {
-	it('is of non-nullable String type', () => {
-		expect(publicMutNoArgs.type).toBeInstanceOf(GraphQLNonNull)
-		expect((publicMutNoArgs.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
-	})
+  it('is of non-nullable String type', () => {
+    expect(publicMutNoArgs.type).toBeInstanceOf(GraphQLNonNull)
+    expect((publicMutNoArgs.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
+  })
 
-	it('takes no arguments', () => {
-		expect('args' in publicMutNoArgs).toBe(false)
-	})
+  it('takes no arguments', () => {
+    expect('args' in publicMutNoArgs).toBe(false)
+  })
 
-	it('describes itself as publicMutNoArgs', () => {
-		expect(publicMutNoArgs.description).toBe('publicMutNoArgs')
-	})
+  it('describes itself as publicMutNoArgs', () => {
+    expect(publicMutNoArgs.description).toBe('publicMutNoArgs')
+  })
 
-	it('resolves the literal string', () => {
-		expect(publicMutNoArgs.resolve()).toBe('publicMutNoArgs')
-	})
+  it('resolves the literal string', () => {
+    expect(publicMutNoArgs.resolve()).toBe('publicMutNoArgs')
+  })
 })
 
 describe('mutations.publicMutArgs', () => {
-	it('is of non-nullable String type', () => {
-		expect(publicMutArgs.type).toBeInstanceOf(GraphQLNonNull)
-		expect((publicMutArgs.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
-	})
+  it('is of non-nullable String type', () => {
+    expect(publicMutArgs.type).toBeInstanceOf(GraphQLNonNull)
+    expect((publicMutArgs.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
+  })
 
-	it('declares name as a non-nullable String argument', () => {
-		expect(Object.keys(publicMutArgs.args)).toEqual(['name'])
-		expect(publicMutArgs.args.name.type).toBeInstanceOf(GraphQLNonNull)
-		expect((publicMutArgs.args.name.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
-	})
+  it('declares name as a non-nullable String argument', () => {
+    expect(Object.keys(publicMutArgs.args)).toEqual(['name'])
+    expect(publicMutArgs.args.name.type).toBeInstanceOf(GraphQLNonNull)
+    expect((publicMutArgs.args.name.type as GraphQLNonNull<typeof GraphQLString>).ofType).toBe(GraphQLString)
+  })
 
-	it('describes itself as publicMutArgs', () => {
-		expect(publicMutArgs.description).toBe('publicMutArgs')
-	})
+  it('describes itself as publicMutArgs', () => {
+    expect(publicMutArgs.description).toBe('publicMutArgs')
+  })
 
-	it('interpolates the name into the returned string', () => {
-		expect(publicMutArgs.resolve(null, { name: 'Mark' })).toBe('publicMutArgs Mark')
-	})
+  it('interpolates the name into the returned string', () => {
+    expect(publicMutArgs.resolve(null, { name: 'Mark' })).toBe('publicMutArgs Mark')
+  })
 })
 
 describe('MutationsPublic', () => {
-	it('mounts the demo pair, the reset flow, seller registration and the customer mutations as its fields', () => {
-		expect(MutationsPublic.name).toBe('MutationsPublic')
-		expect(Object.keys(MutationsPublic.getFields())).toEqual([
-			'publicMutArgs',
-			'publicMutNoArgs',
-			'resetPwd',
-			'updatePwd',
-			'shopOwnerRegister',
-			'userRegister',
-			'userResetPwd',
-			'userUpdatePwd',
-			'userVerifyEmailResend'
-		])
-	})
+  it('mounts the demo pair, the reset flow, seller registration and the customer mutations as its fields', () => {
+    expect(MutationsPublic.name).toBe('MutationsPublic')
+    expect(Object.keys(MutationsPublic.getFields())).toEqual([
+      'publicMutArgs',
+      'publicMutNoArgs',
+      'resetPwd',
+      'updatePwd',
+      'shopOwnerRegister',
+      'userRegister',
+      'userResetPwd',
+      'userUpdatePwd',
+      'userVerifyEmailResend'
+    ])
+  })
 
-	it('runs the no-args mutation end-to-end', async () => {
-		const result = await graphql({
-			schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
-			source: 'mutation { publicMutNoArgs }'
-		})
+  it('runs the no-args mutation end-to-end', async () => {
+    const result = await graphql({
+      schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
+      source: 'mutation { publicMutNoArgs }'
+    })
 
-		expect(result.errors).toBeUndefined()
-		expect(result.data).toEqual({ publicMutNoArgs: 'publicMutNoArgs' })
-	})
+    expect(result.errors).toBeUndefined()
+    expect(result.data).toEqual({ publicMutNoArgs: 'publicMutNoArgs' })
+  })
 
-	it('runs the args mutation end-to-end', async () => {
-		const result = await graphql({
-			schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
-			source: 'mutation { publicMutArgs(name: "Luigi") }'
-		})
+  it('runs the args mutation end-to-end', async () => {
+    const result = await graphql({
+      schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
+      source: 'mutation { publicMutArgs(name: "Luigi") }'
+    })
 
-		expect(result.errors).toBeUndefined()
-		expect(result.data).toEqual({ publicMutArgs: 'publicMutArgs Luigi' })
-	})
+    expect(result.errors).toBeUndefined()
+    expect(result.data).toEqual({ publicMutArgs: 'publicMutArgs Luigi' })
+  })
 
-	it('rejects the args mutation without the mandatory name', async () => {
-		const result = await graphql({
-			schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
-			source: 'mutation { publicMutArgs }'
-		})
+  it('rejects the args mutation without the mandatory name', async () => {
+    const result = await graphql({
+      schema: new GraphQLSchema({ query: QueriesPublic, mutation: MutationsPublic }),
+      source: 'mutation { publicMutArgs }'
+    })
 
-		expect(result.errors).toBeDefined()
-		expect(result.errors?.[0].message).toMatch(/argument "name"/i)
-	})
+    expect(result.errors).toBeDefined()
+    expect(result.errors?.[0].message).toMatch(/argument "name"/i)
+  })
 })

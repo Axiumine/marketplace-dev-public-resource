@@ -2,19 +2,19 @@ import { redisClient } from '@axiumine/koa-utils/dataSources/Redis'
 import { assertUnderRateLimit } from '@axiumine/marketplace-common/others/assertUnderRateLimit'
 import { RATE_WINDOW_SECONDS } from '@lib/access/guardPublicWrite.mjs'
 import {
-	deletePendingRegistration,
-	type IPendingRegistration,
-	MAX_VERIFY_ATTEMPTS,
-	pendingSlot,
-	readPendingRegistration,
-	strikePendingRegistration
+  deletePendingRegistration,
+  type IPendingRegistration,
+  MAX_VERIFY_ATTEMPTS,
+  pendingSlot,
+  readPendingRegistration,
+  strikePendingRegistration
 } from '@lib/registration/pendingRegistration.mjs'
 import { registrationMailer } from '@lib/registration/registrationMailer.mjs'
 import {
-	EMAIL_PATH,
-	type IRegistrationTarget,
-	REGISTRATION_TARGET_SHOP_OWNER,
-	REGISTRATION_TARGET_USER
+  EMAIL_PATH,
+  type IRegistrationTarget,
+  REGISTRATION_TARGET_SHOP_OWNER,
+  REGISTRATION_TARGET_USER
 } from '@lib/registration/registrationTargets.mjs'
 import mongoose, { type ClientSession, type Types } from 'mongoose'
 
@@ -45,9 +45,9 @@ export const REGISTRATION_DONE_LINK = '/x/registration-done'
 
 /** What the address lookup projects: who holds it, whether they are closed, and what they log in with. */
 interface IAddressHolder {
-	_id: Types.ObjectId
-	deleted?: Date
-	login: { password: string }
+  _id: Types.ObjectId
+  deleted?: Date
+  login: { password: string }
 }
 
 /**
@@ -59,13 +59,13 @@ interface IAddressHolder {
  * that skips the approval gate.
  */
 function accountDocument(target: IRegistrationTarget, record: IPendingRegistration) {
-	return {
-		_id: record._id,
-		login: { email: record.email, password: record.password },
-		registeredAt: record.registeredAt,
-		emailVerify: { valid: true },
-		...(target.waitApprov ? { waitApprov: true } : {})
-	}
+  return {
+    _id: record._id,
+    login: { email: record.email, password: record.password },
+    registeredAt: record.registeredAt,
+    emailVerify: { valid: true },
+    ...(target.waitApprov ? { waitApprov: true } : {})
+  }
 }
 
 /**
@@ -97,14 +97,14 @@ function accountDocument(target: IRegistrationTarget, record: IPendingRegistrati
  * that clears the old credential clears the other way in.
  */
 function restoreUpdate(target: IRegistrationTarget, record: IPendingRegistration) {
-	return {
-		$set: {
-			'login.password': record.password,
-			emailVerify: { valid: true },
-			...(target.waitApprov ? { waitApprov: true } : {})
-		},
-		$unset: { deleted: '', deletedBy: '', 'resetPwd.resetHash': '', 'resetPwd.resetDateReq': '' }
-	}
+  return {
+    $set: {
+      'login.password': record.password,
+      emailVerify: { valid: true },
+      ...(target.waitApprov ? { waitApprov: true } : {})
+    },
+    $unset: { deleted: '', deletedBy: '', 'resetPwd.resetHash': '', 'resetPwd.resetDateReq': '' }
+  }
 }
 
 /**
@@ -121,10 +121,10 @@ function restoreUpdate(target: IRegistrationTarget, record: IPendingRegistration
  * transaction, and the recovery path below wants it emphatically outside one.
  */
 function findAddressHolder(target: IRegistrationTarget, record: IPendingRegistration, session: ClientSession | null) {
-	return target.model
-		.findOne({ [EMAIL_PATH]: record.email }, '_id deleted login.password')
-		.session(session)
-		.lean<IAddressHolder>()
+  return target.model
+    .findOne({ [EMAIL_PATH]: record.email }, '_id deleted login.password')
+    .session(session)
+    .lean<IAddressHolder>()
 }
 
 /**
@@ -137,7 +137,7 @@ function findAddressHolder(target: IRegistrationTarget, record: IPendingRegistra
  * not the restore.
  */
 function isOurs(holder: IAddressHolder | null, record: IPendingRegistration): boolean {
-	return holder !== null && holder.deleted === undefined && holder.login.password === record.password
+  return holder !== null && holder.deleted === undefined && holder.login.password === record.password
 }
 
 /**
@@ -165,45 +165,45 @@ function isOurs(holder: IAddressHolder | null, record: IPendingRegistration): bo
  * the same either way, and telling the two apart would say what the platform still holds about an address.
  */
 async function openAccount(target: IRegistrationTarget, record: IPendingRegistration): Promise<boolean> {
-	const session = await mongoose.startSession()
-	let wrote = true
+  const session = await mongoose.startSession()
+  let wrote = true
 
-	try {
-		await session.withTransaction(async () => {
-			const holder = await findAddressHolder(target, record, session)
+  try {
+    await session.withTransaction(async () => {
+      const holder = await findAddressHolder(target, record, session)
 
-			if (holder === null) {
-				await target.model.insertMany([accountDocument(target, record)], { session })
+      if (holder === null) {
+        await target.model.insertMany([accountDocument(target, record)], { session })
 
-				return
-			}
+        return
+      }
 
-			if (holder.deleted !== undefined) {
-				await target.model.updateOne({ _id: holder._id }, restoreUpdate(target, record), {
-					session,
-					runValidators: true
-				})
+      if (holder.deleted !== undefined) {
+        await target.model.updateOne({ _id: holder._id }, restoreUpdate(target, record), {
+          session,
+          runValidators: true
+        })
 
-				return
-			}
+        return
+      }
 
-			if (!isOurs(holder, record)) {
-				throw new Error(EMAIL_CHECK_LINK)
-			}
+      if (!isOurs(holder, record)) {
+        throw new Error(EMAIL_CHECK_LINK)
+      }
 
-			wrote = false
-		})
-	} catch (e: unknown) {
-		if (!isOurs(await findAddressHolder(target, record, null), record)) {
-			throw e
-		}
+      wrote = false
+    })
+  } catch (e: unknown) {
+    if (!isOurs(await findAddressHolder(target, record, null), record)) {
+      throw e
+    }
 
-		return false
-	} finally {
-		await session.endSession()
-	}
+    return false
+  } finally {
+    await session.endSession()
+  }
 
-	return wrote
+  return wrote
 }
 
 /**
@@ -250,42 +250,42 @@ async function openAccount(target: IRegistrationTarget, record: IPendingRegistra
  * activation link is the proof — the same proof a password reset accepts.
  */
 export const createConfirmRegistration = (target: IRegistrationTarget) => {
-	const bucket = `${target.tier}ConfirmRegistration:email`
+  const bucket = `${target.tier}ConfirmRegistration:email`
 
-	return async function confirmRegistration(uEmail: string, hash: string): Promise<void> {
-		await assertUnderRateLimit(redisClient, bucket, uEmail, PER_EMAIL_PER_HOUR, RATE_WINDOW_SECONDS)
+  return async function confirmRegistration(uEmail: string, hash: string): Promise<void> {
+    await assertUnderRateLimit(redisClient, bucket, uEmail, PER_EMAIL_PER_HOUR, RATE_WINDOW_SECONDS)
 
-		const slot = await pendingSlot(target, uEmail)
-		const record = await readPendingRegistration(slot.key)
+    const slot = await pendingSlot(target, uEmail)
+    const record = await readPendingRegistration(slot.key)
 
-		if (record === null) {
-			throw new Error(EMAIL_CHECK_LINK)
-		}
+    if (record === null) {
+      throw new Error(EMAIL_CHECK_LINK)
+    }
 
-		if (record.hash === hash) {
-			// A replay whose first run already committed sends no second welcome mail: it is the same account
-			// being confirmed twice, and the person read the first one.
-			if (await openAccount(target, record)) {
-				await registrationMailer.sendWelcome(uEmail)
-			}
+    if (record.hash === hash) {
+      // A replay whose first run already committed sends no second welcome mail: it is the same account
+      // being confirmed twice, and the person read the first one.
+      if (await openAccount(target, record)) {
+        await registrationMailer.sendWelcome(uEmail)
+      }
 
-			await deletePendingRegistration(slot.key)
+      await deletePendingRegistration(slot.key)
 
-			return
-		}
+      return
+    }
 
-		if (record.requestTimes >= MAX_VERIFY_ATTEMPTS) {
-			await deletePendingRegistration(slot.key)
-			await registrationMailer.tooMuchVerifyRequests(uEmail)
+    if (record.requestTimes >= MAX_VERIFY_ATTEMPTS) {
+      await deletePendingRegistration(slot.key)
+      await registrationMailer.tooMuchVerifyRequests(uEmail)
 
-			throw new Error(EMAIL_CHECK_LINK)
-		}
+      throw new Error(EMAIL_CHECK_LINK)
+    }
 
-		await strikePendingRegistration(slot.key)
-		await registrationMailer.wrongHash(uEmail, record.requestTimes + 1)
+    await strikePendingRegistration(slot.key)
+    await registrationMailer.wrongHash(uEmail, record.requestTimes + 1)
 
-		throw new Error(EMAIL_CHECK_LINK)
-	}
+    throw new Error(EMAIL_CHECK_LINK)
+  }
 }
 
 /** Bound to `user`, for `GET /check/verify-email-user/:email/:hash`. */

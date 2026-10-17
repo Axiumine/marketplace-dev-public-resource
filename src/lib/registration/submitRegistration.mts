@@ -3,16 +3,16 @@ import { encryptPassword } from '@axiumine/koa-utils/lib/encryptPassword'
 import { pendingSlot, writePendingRegistration } from '@lib/registration/pendingRegistration.mjs'
 import { registrationMailer } from '@lib/registration/registrationMailer.mjs'
 import {
-	EMAIL_PATH,
-	type IRegistrationTarget,
-	REGISTRATION_TARGET_SHOP_OWNER,
-	REGISTRATION_TARGET_USER
+  EMAIL_PATH,
+  type IRegistrationTarget,
+  REGISTRATION_TARGET_SHOP_OWNER,
+  REGISTRATION_TARGET_USER
 } from '@lib/registration/registrationTargets.mjs'
 import { Types } from 'mongoose'
 
 /** The one field the submit branches on. Not the account: nothing here needs `login.password` in scope. */
 interface IAccountLiveness {
-	deleted?: Date
+  deleted?: Date
 }
 
 /**
@@ -51,37 +51,37 @@ interface IAccountLiveness {
  * one it always was — the admin.
  */
 export const createSubmitRegistration = (target: IRegistrationTarget) =>
-	async function submitRegistration(uEmail: string, password: string): Promise<void> {
-		// No liveness filter on the read, for the reason the deleted `userForRegistration` gave before it: a closed
-		// document still occupies the address, so the branch has to see it rather than have it filtered
-		// away. `login.email` is deterministically encrypted, which is what makes this `$eq` a lookup.
-		const existing = await target.model.findOne({ [EMAIL_PATH]: uEmail }, 'deleted').lean<IAccountLiveness>()
+  async function submitRegistration(uEmail: string, password: string): Promise<void> {
+    // No liveness filter on the read, for the reason the deleted `userForRegistration` gave before it: a closed
+    // document still occupies the address, so the branch has to see it rather than have it filtered
+    // away. `login.email` is deterministically encrypted, which is what makes this `$eq` a lookup.
+    const existing = await target.model.findOne({ [EMAIL_PATH]: uEmail }, 'deleted').lean<IAccountLiveness>()
 
-		if (existing !== null && existing.deleted === undefined) {
-			await registrationMailer.emailAlreadyValid(uEmail)
+    if (existing !== null && existing.deleted === undefined) {
+      await registrationMailer.emailAlreadyValid(uEmail)
 
-			return
-		}
+      return
+    }
 
-		const slot = await pendingSlot(target, uEmail)
-		const hash = emailHash()
-		const now = new Date()
+    const slot = await pendingSlot(target, uEmail)
+    const hash = emailHash()
+    const now = new Date()
 
-		// bcrypt here rather than at confirm, so the plaintext password never outlives the request that
-		// carried it. The account is opened with `insertMany`, which runs no `save` middleware — so
-		// `LoginSubDocSchema`'s hashing hook does not fire there and this value lands in `login.password`
-		// exactly as it is. Hashing in both places is what once stored `bcrypt(bcrypt(password))`.
-		await writePendingRegistration(slot, {
-			_id: new Types.ObjectId(),
-			password: await encryptPassword(password),
-			hash,
-			registeredAt: now,
-			dateLastReq: now,
-			requestTimes: 1
-		})
+    // bcrypt here rather than at confirm, so the plaintext password never outlives the request that
+    // carried it. The account is opened with `insertMany`, which runs no `save` middleware — so
+    // `LoginSubDocSchema`'s hashing hook does not fire there and this value lands in `login.password`
+    // exactly as it is. Hashing in both places is what once stored `bcrypt(bcrypt(password))`.
+    await writePendingRegistration(slot, {
+      _id: new Types.ObjectId(),
+      password: await encryptPassword(password),
+      hash,
+      registeredAt: now,
+      dateLastReq: now,
+      requestTimes: 1
+    })
 
-		await target.sendVerifyEmail(uEmail, hash)
-	}
+    await target.sendVerifyEmail(uEmail, hash)
+  }
 
 /** Bound to `user`, for `userRegister`. */
 export const submitUserRegistration = createSubmitRegistration(REGISTRATION_TARGET_USER)

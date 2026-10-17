@@ -11,10 +11,10 @@ import { GraphQLBoolean, GraphQLError, GraphQLNonNull, GraphQLString } from 'gra
 const PER_EMAIL_PER_HOUR = 3
 
 export interface IUserRegisterArgs {
-	email: string
-	password: string
-	repeatPassword: string
-	turnstileToken?: string
+  email: string
+  password: string
+  repeatPassword: string
+  turnstileToken?: string
 }
 
 /**
@@ -48,39 +48,39 @@ export interface IUserRegisterArgs {
  * that is what `userVerifyEmailResend` is for.
  */
 export const userRegister = {
-	description: 'Register a new customer and send the activation link',
-	type: new GraphQLNonNull(GraphQLBoolean),
-	args: {
-		email: { type: new GraphQLNonNull(GraphQLString) },
-		password: { type: new GraphQLNonNull(GraphQLString) },
-		repeatPassword: { type: new GraphQLNonNull(GraphQLString) },
-		turnstileToken: { type: GraphQLString }
-	},
-	async resolve(_: unknown, args: IUserRegisterArgs) {
-		const { email, password, repeatPassword, turnstileToken } = args
+  description: 'Register a new customer and send the activation link',
+  type: new GraphQLNonNull(GraphQLBoolean),
+  args: {
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    password: { type: new GraphQLNonNull(GraphQLString) },
+    repeatPassword: { type: new GraphQLNonNull(GraphQLString) },
+    turnstileToken: { type: GraphQLString }
+  },
+  async resolve(_: unknown, args: IUserRegisterArgs) {
+    const { email, password, repeatPassword, turnstileToken } = args
 
-		const uEmail = email.toLowerCase().trim()
-		checkEmailLen(uEmail)
-		checkPwdLen(password)
-		// `checkPwdLen` counts UTF-16 code units; bcrypt truncates on UTF-8 bytes. See the helper's own
-		// doc comment for why a second, byte-accurate check is needed next to the character one.
-		assertPasswordByteLength(password)
+    const uEmail = email.toLowerCase().trim()
+    checkEmailLen(uEmail)
+    checkPwdLen(password)
+    // `checkPwdLen` counts UTF-16 code units; bcrypt truncates on UTF-8 bytes. See the helper's own
+    // doc comment for why a second, byte-accurate check is needed next to the character one.
+    assertPasswordByteLength(password)
 
-		if (password !== repeatPassword) throw throwErrorWrongUserInput('The two passwords do not match')
+    if (password !== repeatPassword) throw throwErrorWrongUserInput('The two passwords do not match')
 
-		await guardPublicWrite({
-			bucket: 'userRegister',
-			email: uEmail,
-			turnstileToken,
-			perEmailPerHour: PER_EMAIL_PER_HOUR
-		})
+    await guardPublicWrite({
+      bucket: 'userRegister',
+      email: uEmail,
+      turnstileToken,
+      perEmailPerHour: PER_EMAIL_PER_HOUR
+    })
 
-		try {
-			await submitUserRegistration(uEmail, password)
-		} catch (e: unknown) {
-			tryCatchRethrow(e as GraphQLError | Error)
-		}
+    try {
+      await submitUserRegistration(uEmail, password)
+    } catch (e: unknown) {
+      tryCatchRethrow(e as GraphQLError | Error)
+    }
 
-		return true
-	}
+    return true
+  }
 }

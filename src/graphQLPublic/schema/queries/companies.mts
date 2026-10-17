@@ -4,9 +4,9 @@ import { GraphQLPublicCompanyPage } from '@ptypes/GraphQLPublicCompanyPage.mjs'
 import { GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql'
 
 interface IArgs {
-	limit?: number | null
-	offset?: number | null
-	city?: string | null
+  limit?: number | null
+  offset?: number | null
+  city?: string | null
 }
 
 /**
@@ -45,42 +45,42 @@ export const PUBLIC_COMPANY_PROJECTION = '_id publicName slug description addres
  * stops being. The extra document is dropped before it is returned.
  */
 export const companies = {
-	type: new GraphQLNonNull(GraphQLPublicCompanyPage),
-	description: 'Get published companies, paginated, optionally filtered by city',
-	args: {
-		limit: { type: GraphQLInt },
-		offset: { type: GraphQLInt },
-		city: { type: GraphQLString }
-	},
-	async resolve(_: unknown, args: IArgs) {
-		const limit = clampLimit(args.limit)
-		const offset = assertOffset(args.offset)
+  type: new GraphQLNonNull(GraphQLPublicCompanyPage),
+  description: 'Get published companies, paginated, optionally filtered by city',
+  args: {
+    limit: { type: GraphQLInt },
+    offset: { type: GraphQLInt },
+    city: { type: GraphQLString }
+  },
+  async resolve(_: unknown, args: IArgs) {
+    const limit = clampLimit(args.limit)
+    const offset = assertOffset(args.offset)
 
-		const filter = { ...livePublic(), ...(args.city ? { 'address.city': args.city } : {}) }
+    const filter = { ...livePublic(), ...(args.city ? { 'address.city': args.city } : {}) }
 
-		const [docs, total] = await Promise.all([
-			Company.find(filter, PUBLIC_COMPANY_PROJECTION)
-				.sort({ publicName: 1 })
-				.skip(offset)
-				.limit(limit + 1)
-				.lean(),
-			// The `limit` option is what bounds the count: the server stops walking at COUNT_CAP
-			// matches instead of at the end of the collection. See COUNT_CAP for why that matters on
-			// this route specifically.
-			Company.countDocuments(filter, { limit: COUNT_CAP })
-		])
+    const [docs, total] = await Promise.all([
+      Company.find(filter, PUBLIC_COMPANY_PROJECTION)
+        .sort({ publicName: 1 })
+        .skip(offset)
+        .limit(limit + 1)
+        .lean(),
+      // The `limit` option is what bounds the count: the server stops walking at COUNT_CAP
+      // matches instead of at the end of the collection. See COUNT_CAP for why that matters on
+      // this route specifically.
+      Company.countDocuments(filter, { limit: COUNT_CAP })
+    ])
 
-		const hasMore = docs.length > limit
-		if (hasMore) docs.pop()
+    const hasMore = docs.length > limit
+    if (hasMore) docs.pop()
 
-		return {
-			nodes: docs,
-			total,
-			// Conservative at the boundary: a collection holding exactly COUNT_CAP matches reports
-			// `false` for a figure that happens to be exact. The other rounding — claiming exactness
-			// for a capped count — would have a client render a page count that is wrong.
-			totalIsExact: total < COUNT_CAP,
-			hasMore
-		}
-	}
+    return {
+      nodes: docs,
+      total,
+      // Conservative at the boundary: a collection holding exactly COUNT_CAP matches reports
+      // `false` for a figure that happens to be exact. The other rounding — claiming exactness
+      // for a capped count — would have a client render a page count that is wrong.
+      totalIsExact: total < COUNT_CAP,
+      hasMore
+    }
+  }
 }

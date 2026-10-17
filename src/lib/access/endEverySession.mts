@@ -22,22 +22,22 @@ const EMAIL_PATH = 'login.email'
 
 /** What binds one copy of the routine: the collection the account lives in, and the tier that collection is. */
 export interface ICreateEndEverySessionArgs {
-	/** `Model<any>` — koa-utils' own type for a model an access flow is pointed at. */
-	model: TAccessModel
-	/**
-	 * The tier of that collection, passed rather than derived.
-	 *
-	 * ⚠️ Nothing on a Mongoose model says which tier it is, and a session index keyed on the id alone
-	 * would revoke a stranger's sessions the moment two collections minted the same `ObjectId` string —
-	 * which nothing prevents. Model and tier are one choice made twice, and they are made together, on
-	 * the two lines at the bottom of this file, so the pair can be read at a glance.
-	 */
-	tier: Tier
+  /** `Model<any>` — koa-utils' own type for a model an access flow is pointed at. */
+  model: TAccessModel
+  /**
+   * The tier of that collection, passed rather than derived.
+   *
+   * ⚠️ Nothing on a Mongoose model says which tier it is, and a session index keyed on the id alone
+   * would revoke a stranger's sessions the moment two collections minted the same `ObjectId` string —
+   * which nothing prevents. Model and tier are one choice made twice, and they are made together, on
+   * the two lines at the bottom of this file, so the pair can be read at a glance.
+   */
+  tier: Tier
 }
 
 /** The one field the read projects. Not the account: nothing here needs, or wants, `login.password` in scope. */
 interface IAccountId {
-	_id: Types.ObjectId
+  _id: Types.ObjectId
 }
 
 /**
@@ -82,20 +82,20 @@ interface IAccountId {
  * caller believes they have just closed is the attack.
  */
 export const createEndEverySession = ({ model, tier }: ICreateEndEverySessionArgs) =>
-	async function endEverySession(uEmail: string): Promise<void> {
-		const account: IAccountId | null = await model.findOne({ [EMAIL_PATH]: uEmail }, '_id').lean<IAccountId>()
+  async function endEverySession(uEmail: string): Promise<void> {
+    const account: IAccountId | null = await model.findOne({ [EMAIL_PATH]: uEmail }, '_id').lean<IAccountId>()
 
-		// Unreachable through the front door: the delegate committed a write to this address moments ago.
-		// A plain Error rather than `throwInternalError`, because the call sites hand it to
-		// `tryCatchRethrow`, which reports a plain Error to Sentry and answers 500 — a GraphQLError would
-		// pass straight through and the 500 would be silent. No address in the message: the tier is enough
-		// to find it and carries no PII.
-		if (account === null) {
-			throw new Error(`endEverySession: no ${tier} account matched the address of a completed reset`)
-		}
+    // Unreachable through the front door: the delegate committed a write to this address moments ago.
+    // A plain Error rather than `throwInternalError`, because the call sites hand it to
+    // `tryCatchRethrow`, which reports a plain Error to Sentry and answers 500 — a GraphQLError would
+    // pass straight through and the 500 would be silent. No address in the message: the tier is enough
+    // to find it and carries no PII.
+    if (account === null) {
+      throw new Error(`endEverySession: no ${tier} account matched the address of a completed reset`)
+    }
 
-		await revokeAllSessionsForAccount({ store: redisClient, tier, accountId: `${account._id}` })
-	}
+    await revokeAllSessionsForAccount({ store: redisClient, tier, accountId: `${account._id}` })
+  }
 
 /** Bound to `shopOwner`, for the `updatePwd` half of the seller reset flow. */
 export const endEverySessionShopOwner = createEndEverySession({ model: ShopOwner, tier: TIER.shopOwner })

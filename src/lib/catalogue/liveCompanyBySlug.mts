@@ -5,9 +5,9 @@ import { livePublic } from './publicRead.mjs'
 
 /** The three fields a caller that resolved a shop by its URL segment actually needs downstream. */
 export interface ILiveCompanyRef {
-	_id: Types.ObjectId
-	slug: string
-	publicName: string
+  _id: Types.ObjectId
+  slug: string
+  publicName: string
 }
 
 /**
@@ -32,5 +32,5 @@ export interface ILiveCompanyRef {
  * index seek; the two liveness predicates are applied on the fetched document, not scanned for.
  */
 export async function liveCompanyBySlug(slug: string): Promise<ILiveCompanyRef | null> {
-	return await Company.findOne({ slug, ...livePublic() }, '_id slug publicName').lean<ILiveCompanyRef>()
+  return await Company.findOne({ slug, ...livePublic() }, '_id slug publicName').lean<ILiveCompanyRef>()
 }

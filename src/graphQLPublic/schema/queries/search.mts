@@ -12,10 +12,10 @@ import { trusted } from 'mongoose'
 import { PUBLIC_COMPANY_PROJECTION } from './companies.mjs'
 
 interface IArgs {
-	q: string
-	near?: INearPoint | null
-	limit?: number | null
-	offset?: number | null
+  q: string
+  near?: INearPoint | null
+  limit?: number | null
+  offset?: number | null
 }
 
 /**
@@ -69,10 +69,10 @@ const MAX_QUERY_LENGTH = 120
  * item half spells the same predicates plainly.
  */
 const SEARCH_ARGS = {
-	q: { type: new GraphQLNonNull(GraphQLString) },
-	near: { type: GraphQLInputNearPoint },
-	limit: { type: GraphQLInt },
-	offset: { type: GraphQLInt }
+  q: { type: new GraphQLNonNull(GraphQLString) },
+  near: { type: GraphQLInputNearPoint },
+  limit: { type: GraphQLInt },
+  offset: { type: GraphQLInt }
 }
 
 /**
@@ -82,12 +82,12 @@ const SEARCH_ARGS = {
  * refuses and the other runs is a page whose two tabs disagree about whether the search is valid.
  */
 function assertQuery(raw: string): string {
-	const q = raw.trim()
+  const q = raw.trim()
 
-	if (q.length === 0) throw new Error('q must not be empty')
-	if (q.length > MAX_QUERY_LENGTH) throw new Error(`q must not exceed ${MAX_QUERY_LENGTH} characters`)
+  if (q.length === 0) throw new Error('q must not be empty')
+  if (q.length > MAX_QUERY_LENGTH) throw new Error(`q must not exceed ${MAX_QUERY_LENGTH} characters`)
 
-	return q
+  return q
 }
 
 /**
@@ -97,43 +97,43 @@ function assertQuery(raw: string): string {
  * document costs one index entry, exactly as it does on `/shops`.
  */
 export const searchCompanies = {
-	type: new GraphQLNonNull(GraphQLPublicCompanyPage),
-	description: 'Full-text search over published companies, optionally within a radius',
-	args: SEARCH_ARGS,
-	async resolve(_: unknown, args: IArgs) {
-		const q = assertQuery(args.q)
-		const near = args.near ? assertNearPoint(args.near) : undefined
-		const limit = clampLimit(args.limit)
-		const offset = assertOffset(args.offset)
+  type: new GraphQLNonNull(GraphQLPublicCompanyPage),
+  description: 'Full-text search over published companies, optionally within a radius',
+  args: SEARCH_ARGS,
+  async resolve(_: unknown, args: IArgs) {
+    const q = assertQuery(args.q)
+    const near = args.near ? assertNearPoint(args.near) : undefined
+    const limit = clampLimit(args.limit)
+    const offset = assertOffset(args.offset)
 
-		const filter = {
-			$text: trusted({ $search: q }),
-			...livePublic(),
-			...(near ? { 'address.position': trusted(centerSphereFilter(near)) } : {})
-		}
+    const filter = {
+      $text: trusted({ $search: q }),
+      ...livePublic(),
+      ...(near ? { 'address.position': trusted(centerSphereFilter(near)) } : {})
+    }
 
-		const [docs, total] = await Promise.all([
-			Company.find(filter, PUBLIC_COMPANY_PROJECTION)
-				// Sorting by `$meta` without projecting the score requires MongoDB 4.4 or newer, which
-				// this platform is well past. Not projecting it is deliberate: the score orders the
-				// list and the order is the answer, so the raw number has no business leaving the
-				// server. GraphQLPublicItemHit says the same at greater length.
-				.sort({ score: { $meta: 'textScore' } })
-				.skip(offset)
-				// `limit + 1` rather than deriving "is there another page" from `total`, which is
-				// capped: past the cap the derived answer would truncate the result set at whatever
-				// COUNT_CAP happens to be. One extra index entry buys an exact flag.
-				.limit(limit + 1)
-				.lean(),
-			// The count carries the same filter, geo bound included, so it is exact up to the cap.
-			Company.countDocuments(filter, { limit: COUNT_CAP })
-		])
+    const [docs, total] = await Promise.all([
+      Company.find(filter, PUBLIC_COMPANY_PROJECTION)
+        // Sorting by `$meta` without projecting the score requires MongoDB 4.4 or newer, which
+        // this platform is well past. Not projecting it is deliberate: the score orders the
+        // list and the order is the answer, so the raw number has no business leaving the
+        // server. GraphQLPublicItemHit says the same at greater length.
+        .sort({ score: { $meta: 'textScore' } })
+        .skip(offset)
+        // `limit + 1` rather than deriving "is there another page" from `total`, which is
+        // capped: past the cap the derived answer would truncate the result set at whatever
+        // COUNT_CAP happens to be. One extra index entry buys an exact flag.
+        .limit(limit + 1)
+        .lean(),
+      // The count carries the same filter, geo bound included, so it is exact up to the cap.
+      Company.countDocuments(filter, { limit: COUNT_CAP })
+    ])
 
-		const hasMore = docs.length > limit
-		if (hasMore) docs.pop()
+    const hasMore = docs.length > limit
+    if (hasMore) docs.pop()
 
-		return { nodes: docs, total, totalIsExact: total < COUNT_CAP, hasMore }
-	}
+    return { nodes: docs, total, totalIsExact: total < COUNT_CAP, hasMore }
+  }
 }
 
 /**
@@ -159,34 +159,34 @@ export const searchCompanies = {
  * `liveItemsAcrossShops` for why the window alone cannot be trusted with that answer.
  */
 export const searchItems = {
-	type: new GraphQLNonNull(GraphQLPublicItemPage),
-	description: 'Full-text search over published items, optionally within a radius of their shop',
-	args: SEARCH_ARGS,
-	async resolve(_: unknown, args: IArgs) {
-		const q = assertQuery(args.q)
-		const near = args.near ? assertNearPoint(args.near) : undefined
-		const limit = clampLimit(args.limit)
-		const offset = assertOffset(args.offset, MAX_CROSS_SHOP_OFFSET)
+  type: new GraphQLNonNull(GraphQLPublicItemPage),
+  description: 'Full-text search over published items, optionally within a radius of their shop',
+  args: SEARCH_ARGS,
+  async resolve(_: unknown, args: IArgs) {
+    const q = assertQuery(args.q)
+    const near = args.near ? assertNearPoint(args.near) : undefined
+    const limit = clampLimit(args.limit)
+    const offset = assertOffset(args.offset, MAX_CROSS_SHOP_OFFSET)
 
-		const match = { $text: { $search: q } }
-		const companyMatch = near ? { 'address.position': centerSphereFilter(near) } : {}
-		const sort = { score: { $meta: 'textScore' } } as const
+    const match = { $text: { $search: q } }
+    const companyMatch = near ? { 'address.position': centerSphereFilter(near) } : {}
+    const sort = { score: { $meta: 'textScore' } } as const
 
-		const [docs, total] = await Promise.all([
-			liveItemsAcrossShops(match, companyMatch, sort, offset, limit + 1),
-			Item.countDocuments({ $text: trusted({ $search: q }), ...livePublic() }, { limit: COUNT_CAP })
-		])
+    const [docs, total] = await Promise.all([
+      liveItemsAcrossShops(match, companyMatch, sort, offset, limit + 1),
+      Item.countDocuments({ $text: trusted({ $search: q }), ...livePublic() }, { limit: COUNT_CAP })
+    ])
 
-		let hasMore = docs.length > limit
+    let hasMore = docs.length > limit
 
-		// Same fallback the category listing needs, for the same reason: a fetch that came back short
-		// only proves the bounded window ran dry, not that no more live matches exist beyond it.
-		if (hasMore) {
-			docs.pop()
-		} else {
-			hasMore = await moreLiveItemsExist(match, companyMatch, sort, offset + limit)
-		}
+    // Same fallback the category listing needs, for the same reason: a fetch that came back short
+    // only proves the bounded window ran dry, not that no more live matches exist beyond it.
+    if (hasMore) {
+      docs.pop()
+    } else {
+      hasMore = await moreLiveItemsExist(match, companyMatch, sort, offset + limit)
+    }
 
-		return { nodes: docs, total, totalIsExact: false, hasMore }
-	}
+    return { nodes: docs, total, totalIsExact: false, hasMore }
+  }
 }

@@ -8,8 +8,8 @@ import { GraphQLBoolean, GraphQLError, GraphQLNonNull, GraphQLString } from 'gra
 const PER_EMAIL_PER_HOUR = 3
 
 export interface IUserVerifyEmailResendArgs {
-	email: string
-	turnstileToken?: string
+  email: string
+  turnstileToken?: string
 }
 
 /**
@@ -35,31 +35,31 @@ export interface IUserVerifyEmailResendArgs {
  * attempts against a hash that no longer opens anything.
  */
 export const userVerifyEmailResend = {
-	description: 'Re-send the customer activation link',
-	type: new GraphQLNonNull(GraphQLBoolean),
-	args: {
-		email: { type: new GraphQLNonNull(GraphQLString) },
-		turnstileToken: { type: GraphQLString }
-	},
-	async resolve(_: unknown, args: IUserVerifyEmailResendArgs) {
-		const { email, turnstileToken } = args
+  description: 'Re-send the customer activation link',
+  type: new GraphQLNonNull(GraphQLBoolean),
+  args: {
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    turnstileToken: { type: GraphQLString }
+  },
+  async resolve(_: unknown, args: IUserVerifyEmailResendArgs) {
+    const { email, turnstileToken } = args
 
-		const uEmail = email.toLowerCase().trim()
-		checkEmailLen(uEmail)
+    const uEmail = email.toLowerCase().trim()
+    checkEmailLen(uEmail)
 
-		await guardPublicWrite({
-			bucket: 'userVerifyEmailResend',
-			email: uEmail,
-			turnstileToken,
-			perEmailPerHour: PER_EMAIL_PER_HOUR
-		})
+    await guardPublicWrite({
+      bucket: 'userVerifyEmailResend',
+      email: uEmail,
+      turnstileToken,
+      perEmailPerHour: PER_EMAIL_PER_HOUR
+    })
 
-		try {
-			await resendUserRegistration(uEmail)
-		} catch (e: unknown) {
-			tryCatchRethrow(e as GraphQLError | Error)
-		}
+    try {
+      await resendUserRegistration(uEmail)
+    } catch (e: unknown) {
+      tryCatchRethrow(e as GraphQLError | Error)
+    }
 
-		return true
-	}
+    return true
+  }
 }

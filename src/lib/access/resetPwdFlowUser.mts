@@ -17,14 +17,14 @@ import { User } from '@axiumine/marketplace-common/models/MongoDB/User'
  * strict validator, so unsetting one member leaves a document the database rejects.
  */
 export const RESET_PWD_PATHS_USER: IResetPwdPaths = {
-	email: 'login.email',
-	password: 'login.password',
-	name: 'personalData.firstName',
-	resetDateReq: 'resetPwd.resetDateReq',
-	resetHash: 'resetPwd.resetHash',
-	deleted: 'deleted',
-	disabled: 'disabled',
-	resetClear: ['resetPwd']
+  email: 'login.email',
+  password: 'login.password',
+  name: 'personalData.firstName',
+  resetDateReq: 'resetPwd.resetDateReq',
+  resetHash: 'resetPwd.resetHash',
+  deleted: 'deleted',
+  disabled: 'disabled',
+  resetClear: ['resetPwd']
 }
 
 /**
@@ -65,9 +65,9 @@ const RESET_PATH_USER = '/reset-password/confirm#'
  * link on the wrong domain, exactly as the `env` template warns for the verification link.
  */
 const flow = createResetPwdFlow({
-	model: User,
-	paths: RESET_PWD_PATHS_USER,
-	mailer: createResetPwdMailer(process.env.APP_DOMAIN_USER, RESET_PATH_USER)
+  model: User,
+  paths: RESET_PWD_PATHS_USER,
+  mailer: createResetPwdMailer(process.env.APP_DOMAIN_USER, RESET_PATH_USER)
 })
 
 /** Reset request for a customer: sends the link on the storefront domain. */

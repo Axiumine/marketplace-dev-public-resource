@@ -74,13 +74,13 @@ export const OVERFETCH = 3
 export const MAX_CROSS_SHOP_OFFSET = 2_000
 
 export interface IItemHit {
-	_id: Types.ObjectId
-	idCategory: Types.ObjectId
-	name: string
-	description: string
-	slug: string
-	companySlug: string
-	companyPublicName: string
+  _id: Types.ObjectId
+  idCategory: Types.ObjectId
+  name: string
+  description: string
+  slug: string
+  companySlug: string
+  companyPublicName: string
 }
 
 /**
@@ -103,49 +103,49 @@ export interface IItemHit {
  * @param limit        already clamped by the caller.
  */
 export async function liveItemsAcrossShops(
-	match: Record<string, unknown>,
-	companyMatch: Record<string, unknown>,
-	sort: PipelineStage.Sort['$sort'],
-	skip: number,
-	limit: number
+  match: Record<string, unknown>,
+  companyMatch: Record<string, unknown>,
+  sort: PipelineStage.Sort['$sort'],
+  skip: number,
+  limit: number
 ): Promise<IItemHit[]> {
-	const pipeline: PipelineStage[] = [
-		{ $match: { ...match, ...LIVE_PUBLIC_PIPELINE } },
-		{ $sort: sort },
-		// Bound the work before the join, and only here. Everything after this stage is O(window).
-		{ $limit: (skip + limit) * OVERFETCH },
-		{
-			$lookup: {
-				from: 'company',
-				localField: 'idCompany',
-				foreignField: '_id',
-				as: 'company',
-				// The sub-pipeline is what makes the join a filter as well as a fetch: a company that
-				// fails these predicates produces an empty `company` array, and the `$unwind` below
-				// then drops the item. Projecting two fields keeps the legal-entity half of that
-				// collection — vatNumber, certifiedEmail, legalName, registryExtract — out of this
-				// service's memory entirely, rather than relying on the GraphQL type to hide it.
-				pipeline: [{ $match: { ...companyMatch, ...LIVE_PUBLIC_PIPELINE } }, { $project: { slug: 1, publicName: 1 } }]
-			}
-		},
-		// No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
-		{ $unwind: '$company' },
-		{ $skip: skip },
-		{ $limit: limit },
-		{
-			$project: {
-				_id: 1,
-				idCategory: 1,
-				name: 1,
-				description: 1,
-				slug: 1,
-				companySlug: '$company.slug',
-				companyPublicName: '$company.publicName'
-			}
-		}
-	]
+  const pipeline: PipelineStage[] = [
+    { $match: { ...match, ...LIVE_PUBLIC_PIPELINE } },
+    { $sort: sort },
+    // Bound the work before the join, and only here. Everything after this stage is O(window).
+    { $limit: (skip + limit) * OVERFETCH },
+    {
+      $lookup: {
+        from: 'company',
+        localField: 'idCompany',
+        foreignField: '_id',
+        as: 'company',
+        // The sub-pipeline is what makes the join a filter as well as a fetch: a company that
+        // fails these predicates produces an empty `company` array, and the `$unwind` below
+        // then drops the item. Projecting two fields keeps the legal-entity half of that
+        // collection — vatNumber, certifiedEmail, legalName, registryExtract — out of this
+        // service's memory entirely, rather than relying on the GraphQL type to hide it.
+        pipeline: [{ $match: { ...companyMatch, ...LIVE_PUBLIC_PIPELINE } }, { $project: { slug: 1, publicName: 1 } }]
+      }
+    },
+    // No `preserveNullAndEmptyArrays` — the dropping IS the company-published check.
+    { $unwind: '$company' },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $project: {
+        _id: 1,
+        idCategory: 1,
+        name: 1,
+        description: 1,
+        slug: 1,
+        companySlug: '$company.slug',
+        companyPublicName: '$company.publicName'
+      }
+    }
+  ]
 
-	return await Item.aggregate<IItemHit>(pipeline)
+  return await Item.aggregate<IItemHit>(pipeline)
 }
 
 /**
@@ -194,31 +194,31 @@ const NO_REAL_BOUND = Number.MAX_SAFE_INTEGER
  *                       sentinel document would have occupied had the bounded fetch reached it.
  */
 export async function moreLiveItemsExist(
-	match: Record<string, unknown>,
-	companyMatch: Record<string, unknown>,
-	sort: PipelineStage.Sort['$sort'],
-	position: number
+  match: Record<string, unknown>,
+  companyMatch: Record<string, unknown>,
+  sort: PipelineStage.Sort['$sort'],
+  position: number
 ): Promise<boolean> {
-	const pipeline: PipelineStage[] = [
-		{ $match: { ...match, ...LIVE_PUBLIC_PIPELINE } },
-		{ $sort: sort },
-		{ $limit: NO_REAL_BOUND },
-		{
-			$lookup: {
-				from: 'company',
-				localField: 'idCompany',
-				foreignField: '_id',
-				as: 'company',
-				pipeline: [{ $match: { ...companyMatch, ...LIVE_PUBLIC_PIPELINE } }, { $project: { _id: 1 } }]
-			}
-		},
-		{ $unwind: '$company' },
-		{ $skip: position },
-		{ $limit: 1 },
-		{ $project: { _id: 1 } }
-	]
+  const pipeline: PipelineStage[] = [
+    { $match: { ...match, ...LIVE_PUBLIC_PIPELINE } },
+    { $sort: sort },
+    { $limit: NO_REAL_BOUND },
+    {
+      $lookup: {
+        from: 'company',
+        localField: 'idCompany',
+        foreignField: '_id',
+        as: 'company',
+        pipeline: [{ $match: { ...companyMatch, ...LIVE_PUBLIC_PIPELINE } }, { $project: { _id: 1 } }]
+      }
+    },
+    { $unwind: '$company' },
+    { $skip: position },
+    { $limit: 1 },
+    { $project: { _id: 1 } }
+  ]
 
-	const hits = await Item.aggregate<{ _id: Types.ObjectId }>(pipeline)
+  const hits = await Item.aggregate<{ _id: Types.ObjectId }>(pipeline)
 
-	return hits.length > 0
+  return hits.length > 0
 }

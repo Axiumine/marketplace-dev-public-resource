@@ -34,11 +34,11 @@ import { trusted } from 'mongoose'
  * match nothing.
  */
 export const itemCategories = {
-	type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicItemCategory))),
-	description: 'Get the whole item category tree, flat',
-	async resolve() {
-		return await ItemCategory.find({ deleted: trusted({ $exists: false }) }, '_id idParent name slug position')
-			.sort({ position: 1, _id: 1 })
-			.lean()
-	}
+  type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLPublicItemCategory))),
+  description: 'Get the whole item category tree, flat',
+  async resolve() {
+    return await ItemCategory.find({ deleted: trusted({ $exists: false }) }, '_id idParent name slug position')
+      .sort({ position: 1, _id: 1 })
+      .lean()
+  }
 }

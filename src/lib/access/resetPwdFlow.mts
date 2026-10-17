@@ -23,14 +23,14 @@ import { ShopOwner } from '@axiumine/marketplace-common/models/MongoDB/ShopOwner
  * document the validator rejects. The whole container is the only legal cleanup.
  */
 export const RESET_PWD_PATHS: IResetPwdPaths = {
-	email: 'login.email',
-	password: 'login.password',
-	name: 'personalData.firstName',
-	resetDateReq: 'resetPwd.resetDateReq',
-	resetHash: 'resetPwd.resetHash',
-	deleted: 'deleted',
-	disabled: 'disabled',
-	resetClear: ['resetPwd']
+  email: 'login.email',
+  password: 'login.password',
+  name: 'personalData.firstName',
+  resetDateReq: 'resetPwd.resetDateReq',
+  resetHash: 'resetPwd.resetHash',
+  deleted: 'deleted',
+  disabled: 'disabled',
+  resetClear: ['resetPwd']
 }
 
 /**

@@ -25,17 +25,17 @@ import { GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLString } from 'gra
  * with a name and no page body.
  */
 export const GraphQLPublicCompany = new GraphQLObjectType({
-	name: 'GraphQLPublicCompany',
-	fields: () => ({
-		// Exposed because the SPA's cache keys on it and because `/shop/:slug` needs a stable handle
-		// for the map pin it came from. It is an opaque identifier, not a capability: no public
-		// resolver takes one as an argument.
-		_id: { type: new GraphQLNonNull(GraphQLID) },
-		publicName: { type: new GraphQLNonNull(GraphQLString) },
-		slug: { type: new GraphQLNonNull(GraphQLString) },
-		description: { type: GraphQLString },
-		address: { type: new GraphQLNonNull(GraphQLPublicCompanyAddress) }
-	})
+  name: 'GraphQLPublicCompany',
+  fields: () => ({
+    // Exposed because the SPA's cache keys on it and because `/shop/:slug` needs a stable handle
+    // for the map pin it came from. It is an opaque identifier, not a capability: no public
+    // resolver takes one as an argument.
+    _id: { type: new GraphQLNonNull(GraphQLID) },
+    publicName: { type: new GraphQLNonNull(GraphQLString) },
+    slug: { type: new GraphQLNonNull(GraphQLString) },
+    description: { type: GraphQLString },
+    address: { type: new GraphQLNonNull(GraphQLPublicCompanyAddress) }
+  })
 })
 
 /**
@@ -47,9 +47,9 @@ export const GraphQLPublicCompany = new GraphQLObjectType({
  * would never have to reason about a shop with no coordinates.
  */
 const GraphQLPublicCompanyAddress = new GraphQLObjectType({
-	name: 'GraphQLPublicCompanyAddress',
-	fields: () => ({
-		...GraphQLBaseAddressFrag,
-		position: { type: new GraphQLNonNull(GraphQLPublicPosition) }
-	})
+  name: 'GraphQLPublicCompanyAddress',
+  fields: () => ({
+    ...GraphQLBaseAddressFrag,
+    position: { type: new GraphQLNonNull(GraphQLPublicPosition) }
+  })
 })

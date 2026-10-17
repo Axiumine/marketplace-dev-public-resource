@@ -6,16 +6,16 @@ import { GraphQLNonNull, GraphQLString } from 'graphql'
 import { Types } from 'mongoose'
 
 interface IArgs {
-	companySlug: string
-	slug: string
+  companySlug: string
+  slug: string
 }
 
 interface IItemRow {
-	_id: Types.ObjectId
-	idCategory: Types.ObjectId
-	name: string
-	description: string
-	slug: string
+  _id: Types.ObjectId
+  idCategory: Types.ObjectId
+  name: string
+  description: string
+  slug: string
 }
 
 /**
@@ -39,22 +39,22 @@ interface IItemRow {
  * are still drafts. The SSR route turns `null` into a real HTTP 404 so nothing is indexed.
  */
 export const itemBySlug = {
-	type: GraphQLPublicItemHit,
-	description: 'Get one published item by its company slug and its own slug, or null',
-	args: {
-		companySlug: { type: new GraphQLNonNull(GraphQLString) },
-		slug: { type: new GraphQLNonNull(GraphQLString) }
-	},
-	async resolve(_: unknown, args: IArgs) {
-		const company = await liveCompanyBySlug(args.companySlug)
-		if (!company) return null
+  type: GraphQLPublicItemHit,
+  description: 'Get one published item by its company slug and its own slug, or null',
+  args: {
+    companySlug: { type: new GraphQLNonNull(GraphQLString) },
+    slug: { type: new GraphQLNonNull(GraphQLString) }
+  },
+  async resolve(_: unknown, args: IArgs) {
+    const company = await liveCompanyBySlug(args.companySlug)
+    if (!company) return null
 
-		const item = await Item.findOne(
-			{ idCompany: company._id, slug: args.slug, ...livePublic() },
-			'_id idCategory name description slug'
-		).lean<IItemRow>()
-		if (!item) return null
+    const item = await Item.findOne(
+      { idCompany: company._id, slug: args.slug, ...livePublic() },
+      '_id idCategory name description slug'
+    ).lean<IItemRow>()
+    if (!item) return null
 
-		return { ...item, companySlug: company.slug, companyPublicName: company.publicName }
-	}
+    return { ...item, companySlug: company.slug, companyPublicName: company.publicName }
+  }
 }

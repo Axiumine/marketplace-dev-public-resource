@@ -4,14 +4,14 @@ import Router from '@koa/router'
 // and after ADR-042 there is no half-built document to read in any collection: a pending registration is a
 // Redis record, and the click below is what creates the account.
 import {
-	routerConfirmShopOwnerRegistration,
-	routerConfirmUserRegistration
+  routerConfirmShopOwnerRegistration,
+  routerConfirmUserRegistration
 } from '@lib/registration/confirmRegistrationRouter.mjs'
 
 const router = new Router({ prefix: '/check' })
 
 router.get('/', async (ctx) => {
-	ctx.body = ''
+  ctx.body = ''
 })
 
 router.get('/verify-email/:email/:hash', routerConfirmShopOwnerRegistration)

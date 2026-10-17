@@ -25,6 +25,6 @@ export const SHOP_OWNER_VERIFY_LINK_PATH = '/check/verify-email'
  * exist — so there is no name to greet them by until onboarding asks for one.
  */
 export async function sendShopOwnerVerifyEmail(email: string, hash: string) {
-	const SocketLabsObj = new SocketLabsLib()
-	await SocketLabsObj.sendEmailVerify(email, hash, '', process.env.APP_DOMAIN, SHOP_OWNER_VERIFY_LINK_PATH)
+  const SocketLabsObj = new SocketLabsLib()
+  await SocketLabsObj.sendEmailVerify(email, hash, '', process.env.APP_DOMAIN, SHOP_OWNER_VERIFY_LINK_PATH)
 }

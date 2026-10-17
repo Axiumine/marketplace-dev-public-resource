@@ -8,7 +8,7 @@ import { GraphQLNonNull, GraphQLString } from 'graphql'
 const PER_EMAIL_PER_HOUR = 3
 
 export interface IUserResetPwdArgs extends IResetPwdArgs {
-	turnstileToken?: string
+  turnstileToken?: string
 }
 
 /**
@@ -30,28 +30,28 @@ export interface IUserResetPwdArgs extends IResetPwdArgs {
  * exactly what a silently broken wiring looks like. The two are separate fields for that reason.
  */
 export const userResetPwd = {
-	description: 'Send a customer password-reset link',
-	type: boundResetPwd.type,
-	args: {
-		email: { type: new GraphQLNonNull(GraphQLString) },
-		turnstileToken: { type: GraphQLString }
-	},
-	async resolve(source: unknown, args: IUserResetPwdArgs) {
-		const { email, turnstileToken } = args
+  description: 'Send a customer password-reset link',
+  type: boundResetPwd.type,
+  args: {
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    turnstileToken: { type: GraphQLString }
+  },
+  async resolve(source: unknown, args: IUserResetPwdArgs) {
+    const { email, turnstileToken } = args
 
-		const uEmail = email.toLowerCase().trim()
-		checkEmailLen(uEmail)
+    const uEmail = email.toLowerCase().trim()
+    checkEmailLen(uEmail)
 
-		await guardPublicWrite({
-			bucket: 'userResetPwd',
-			email: uEmail,
-			turnstileToken,
-			perEmailPerHour: PER_EMAIL_PER_HOUR
-		})
+    await guardPublicWrite({
+      bucket: 'userResetPwd',
+      email: uEmail,
+      turnstileToken,
+      perEmailPerHour: PER_EMAIL_PER_HOUR
+    })
 
-		// The email is passed on as typed, not lowercased: the delegate normalises it itself, and handing
-		// it a pre-normalised value would hide a change of mind there. Only the guard needs the canonical
-		// form, so that two spellings of one address share a counter.
-		return boundResetPwd.resolve(source, args)
-	}
+    // The email is passed on as typed, not lowercased: the delegate normalises it itself, and handing
+    // it a pre-normalised value would hide a change of mind there. Only the guard needs the canonical
+    // form, so that two spellings of one address share a counter.
+    return boundResetPwd.resolve(source, args)
+  }
 }

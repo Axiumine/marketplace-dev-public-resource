@@ -55,7 +55,7 @@
     "mongoose": "^9.11.2",
     "redis": "^6.3.0",
     "reflect-metadata": "^0.2.2",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.3"
   },
   "resolutions": {
     "axios": "0.34.0",

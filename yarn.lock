@@ -3743,10 +3743,10 @@ module-details-from-path@^1.0.3, module-details-from-path@^1.0.4:
   resolved "https://registry.npmjs.org/module-details-from-path/-/module-details-from-path-1.0.4.tgz#b662fdcd93f6c83d3f25289da0ce81c8d9685b94"
   integrity sha512-EGWKgxALGMgzvxYF1UyGTy0HXX/2vHLkw6+NvDKW2jypWbHpjQuj4UMcqQWXHERJhVGKikolT06G3bcKe4fi7w==
 
-mongodb-client-encryption@^7.2.1:
-  version "7.2.1"
-  resolved "https://registry.npmjs.org/mongodb-client-encryption/-/mongodb-client-encryption-7.2.1.tgz#32f5b8c6665188128ee36723c895a0ac58dad744"
-  integrity sha512-22N0jk04BFKMvuRNsxts+j5YnbyemV/UPJNp+q55BT0EcTVvoo/ASK71seW300/ryITzyow830HLTsQo0sYf2g==
+mongodb-client-encryption@^7.2.2:
+  version "7.2.2"
+  resolved "https://registry.yarnpkg.com/mongodb-client-encryption/-/mongodb-client-encryption-7.2.2.tgz#04ff7537a2e88f6a7156f7e95b9260baa9429ff2"
+  integrity sha512-bEJqWZy3q312kQuRg/2s6uPjOtf0F34VYrQbjW4RSaUywEAi9pYxRq5EJQT3cuk/6oAQT5LcYJXoJkm0ldyG2A==
   dependencies:
     node-addon-api "^8.6.0"
     prebuild-install "^7.1.3"

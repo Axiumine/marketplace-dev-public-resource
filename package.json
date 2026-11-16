@@ -59,6 +59,8 @@
   },
   "resolutions": {
     "axios": "0.34.0",
+    "minimatch@npm:^10.2.2": "^11.0.8",
+    "minimatch@npm:~10.2.4": "^11.0.8",
     "qs": "^6.15.2"
   },
   "devDependencies": {

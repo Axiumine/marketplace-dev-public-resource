@@ -26,7 +26,8 @@ const apolloServerOptions: { pluginCount: number | undefined; csrfPrevention: un
 const apolloKoaMiddleware = vi.fn()
 const apolloKoaOptions: { context: () => Promise<unknown> }[] = []
 
-vi.mock('@sentry/node', () => ({ captureException, captureMessage, flush }))
+// koa-utils >= 8 reads captureMessage and withScope off @sentry/node as soon as it loads, so the factory must export both.
+vi.mock('@sentry/node', () => ({ captureException, captureMessage, flush, withScope: vi.fn() }))
 vi.mock('@as-integrations/koa', () => ({
   koaMiddleware: (_server: unknown, options: { context: () => Promise<unknown> }) => {
     apolloKoaOptions.push(options)

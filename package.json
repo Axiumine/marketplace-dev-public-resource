@@ -41,7 +41,7 @@
     "@axiumine/koa-utils": "^9.1.0",
     "@axiumine/marketplace-common": "^4.6.0",
     "@koa/router": "^15.7.0",
-    "@node-rs/bcrypt": "^1.10.7",
+    "@node-rs/bcrypt": "^2.0.0",
     "@sentry/node": "10.76.2",
     "@socketlabs/email": "^1.4.4",
     "dotenv": "^17.4.2",

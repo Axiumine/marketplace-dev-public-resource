@@ -73,9 +73,6 @@ Two paths rather than one because tier is *which collection you authenticate aga
 is looked up in a different collection each time, and a single route would have to be told which, by a
 caller that could lie.
 
-⚠️ These routes are also why GitNexus's contract extraction finds three providers here and links none of
-them: its consumers are each frontend's external geocoder call. See parent [`docs/gitnexus.md`](https://github.com/Axiumine/fullstack-marketplace-blueprint/blob/main/docs/gitnexus.md).
-
 ## Related files
 
 | Topic | File |

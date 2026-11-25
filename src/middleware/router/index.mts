@@ -10,6 +10,8 @@ import {
 
 const router = new Router({ prefix: '/check' })
 
+// Stryker disable next-line StringLiteral: equivalent. Under a prefix @koa/router turns '' and '/' into the
+// same path and the same pattern, so no request can tell the two apart.
 router.get('/', async (ctx) => {
   ctx.body = ''
 })

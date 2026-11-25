@@ -1,3 +1,5 @@
+import type { AddressInfo } from 'node:net'
+
 import type { EnvShape } from '@axiumine/marketplace-common/others/assertEnvShape'
 import http from 'http'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -682,6 +684,61 @@ describe('start (success path — the listen() call)', () => {
 
     expect(setupFieldEncryption).toHaveBeenCalledExactlyOnceWith()
     expect(setupFieldEncryption.mock.invocationCallOrder[0]).toBeLessThan(listenSpy.mock.invocationCallOrder[0])
+  })
+})
+
+// What createServer() mounts in front of Apollo, driven over a real socket: the assertion is that each
+// middleware is on the stack, which only a request travelling the stack can show. No datasource is
+// touched — `/check` itself reads none.
+describe('createServer (the stack in front of Apollo, driven over a real socket)', () => {
+  let httpServer: Awaited<ReturnType<typeof createServer>>['httpServer']
+  let apolloServer: Awaited<ReturnType<typeof createServer>>['apolloServer']
+  let base: string
+
+  beforeEach(async () => {
+    for (const k of REQUIRED_ENV_VARS) vi.stubEnv(k, shaped(k))
+    vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379')
+
+    const server = await createServer()
+    httpServer = server.httpServer
+    apolloServer = server.apolloServer
+
+    await new Promise<void>((resolve) => httpServer.listen(0, resolve))
+    base = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await apolloServer.stop()
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+    vi.unstubAllEnvs()
+  })
+
+  it('mounts the /check router', async () => {
+    const res = await fetch(`${base}/check`)
+
+    expect(res.status).toBe(200)
+    await expect(res.text()).resolves.toBe('')
+  })
+
+  it('names the methods a /check route allows', async () => {
+    const res = await fetch(`${base}/check`, { method: 'OPTIONS' })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('allow')).toBe('HEAD, GET')
+  })
+
+  // The outermost middleware: whatever is thrown below it leaves as this platform's JSON error body,
+  // not as Koa's plain text.
+  it('answers a body it cannot parse with a JSON error body', async () => {
+    const res = await fetch(`${base}${ENDPOINT}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{'
+    })
+
+    expect(res.status).toBe(400)
+    expect(res.headers.get('content-type')).toContain('application/json')
+    await expect(res.json()).resolves.toEqual({ message: expect.any(String) })
   })
 })
 

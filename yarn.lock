@@ -5436,9 +5436,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mongoose@npm:^9.11.2":
-  version: 9.13.0
-  resolution: "mongoose@npm:9.13.0"
+"mongoose@npm:^9.13.1":
+  version: 9.13.1
+  resolution: "mongoose@npm:9.13.1"
   dependencies:
     "@standard-schema/spec": "npm:^1.1.0"
     kareem: "npm:3.4.1"
@@ -5447,7 +5447,7 @@ __metadata:
     mquery: "npm:6.0.1"
     ms: "npm:2.1.3"
     sift: "npm:17.1.4"
-  checksum: 10c0/d3b55b892a37ea028852b4a7e41c932f93332067847f0bedb20c21d42097927e7a3f8d600658f02c9a419d8ef0e96074b004ae2adf3ecd93e747bf431c40397d
+  checksum: 10c0/0058fdcf8649b53c6a81ea80ea2df6ec03ca6885c18ecda3dbc43c021f08139e30c42a89250425569be20e437098c9d13ea63ccd47136df4853dcc0eddae6905
   languageName: node
   linkType: hard
 
@@ -6149,7 +6149,7 @@ __metadata:
     lodash: "npm:^4.18.1"
     mongodb: "npm:^7.7.0"
     mongodb-client-encryption: "npm:^7.2.2"
-    mongoose: "npm:^9.11.2"
+    mongoose: "npm:^9.13.1"
     prettier: "npm:^3.9.10"
     redis: "npm:^6.3.0"
     reflect-metadata: "npm:^0.2.2"
